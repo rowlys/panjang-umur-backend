@@ -1,0 +1,1197 @@
+basePath: /api
+definitions:
+  challenge.CreateChallengeRequest:
+    properties:
+      assigneeIds:
+        items:
+          type: string
+        type: array
+      description:
+        type: string
+      expiresAt:
+        type: string
+      points:
+        type: integer
+      title:
+        type: string
+      type:
+        type: integer
+    required:
+    - points
+    - title
+    type: object
+  friendship.SendRequestRequest:
+    properties:
+      addresseeId:
+        type: string
+    required:
+    - addresseeId
+    type: object
+  models.AssignmentStatus:
+    enum:
+    - 0
+    - 1
+    - 2
+    type: integer
+    x-enum-varnames:
+    - AssignmentAssigned
+    - AssignmentSubmitted
+    - AssignmentApproved
+  models.Challenge:
+    properties:
+      createdAt:
+        type: string
+      creatorId:
+        type: string
+      description:
+        type: string
+      expiresAt:
+        type: string
+      id:
+        type: string
+      points:
+        type: integer
+      restricted:
+        type: boolean
+      status:
+        $ref: '#/definitions/models.ChallengeStatus'
+      title:
+        type: string
+      type:
+        $ref: '#/definitions/models.ChallengeType'
+      updatedAt:
+        type: string
+    type: object
+  models.ChallengeAssignment:
+    properties:
+      approvedAt:
+        type: string
+      assigneeId:
+        type: string
+      challengeId:
+        type: string
+      id:
+        type: string
+      status:
+        $ref: '#/definitions/models.AssignmentStatus'
+      submittedAt:
+        type: string
+    type: object
+  models.ChallengeStatus:
+    enum:
+    - 0
+    - 1
+    - 2
+    type: integer
+    x-enum-varnames:
+    - StatusActive
+    - StatusExpired
+    - StatusCancelled
+  models.ChallengeType:
+    enum:
+    - 0
+    - 1
+    - 2
+    type: integer
+    x-enum-varnames:
+    - Bounty
+    - Daily
+    - Weekly
+  models.Friendship:
+    properties:
+      addresseeId:
+        type: string
+      createdAt:
+        type: string
+      id:
+        type: string
+      requesterId:
+        type: string
+      respondedAt:
+        type: string
+      status:
+        $ref: '#/definitions/models.FriendshipStatus'
+    type: object
+  models.FriendshipStatus:
+    enum:
+    - 0
+    - 1
+    type: integer
+    x-enum-varnames:
+    - FriendshipPending
+    - FriendshipAccepted
+  models.Message:
+    properties:
+      body:
+        type: string
+      createdAt:
+        type: string
+      id:
+        type: string
+      readAt:
+        type: string
+      recipientId:
+        type: string
+      senderId:
+        type: string
+    type: object
+  models.Reward:
+    properties:
+      cost:
+        type: integer
+      createdAt:
+        type: string
+      description:
+        type: string
+      id:
+        type: string
+      isAvailable:
+        type: boolean
+      redeemedById:
+        type: string
+      rewardGiverId:
+        type: string
+      title:
+        type: string
+      updatedAt:
+        type: string
+      visibility:
+        $ref: '#/definitions/models.RewardVisibilityMode'
+    type: object
+  models.RewardVisibilityMode:
+    enum:
+    - 0
+    - 1
+    type: integer
+    x-enum-varnames:
+    - Public
+    - Restricted
+  models.Transaction:
+    properties:
+      amount:
+        type: integer
+      giverId:
+        type: string
+      id:
+        type: string
+      referenceId:
+        type: string
+      timestamp:
+        type: string
+      type:
+        $ref: '#/definitions/models.TransactionType'
+      userId:
+        type: string
+    type: object
+  models.TransactionType:
+    enum:
+    - 0
+    - 1
+    type: integer
+    x-enum-varnames:
+    - Earned
+    - Spent
+  models.User:
+    properties:
+      createdAt:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      updatedAt:
+        type: string
+      username:
+        type: string
+    type: object
+  models.UserPointBalance:
+    properties:
+      balance:
+        type: integer
+      giverId:
+        type: string
+      ownerId:
+        type: string
+    type: object
+  reward.CreateRewardRequest:
+    properties:
+      allowedUserIds:
+        items:
+          type: string
+        type: array
+      cost:
+        type: integer
+      description:
+        type: string
+      title:
+        type: string
+      visibility:
+        $ref: '#/definitions/models.RewardVisibilityMode'
+    required:
+    - cost
+    - title
+    type: object
+  user.LoginInput:
+    properties:
+      password:
+        type: string
+      username:
+        type: string
+    required:
+    - password
+    - username
+    type: object
+  user.RegisterInput:
+    properties:
+      name:
+        type: string
+      password:
+        minLength: 6
+        type: string
+      username:
+        type: string
+    required:
+    - name
+    - password
+    - username
+    type: object
+info:
+  contact: {}
+  description: A health and longevity challenge API
+  title: Panjang Umur API
+  version: "1.0"
+paths:
+  /auth/login:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Login credentials
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/user.LoginInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Login
+      tags:
+      - Auth
+  /auth/register:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Registration data
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/user.RegisterInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Register a new user
+      tags:
+      - Auth
+  /challenges:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Challenge'
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List active challenges visible to me (created by me, assigned to me,
+        or open challenges from my friends)
+      tags:
+      - Challenges
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Challenge data
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/challenge.CreateChallengeRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.Challenge'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create a challenge for one or more friends
+      tags:
+      - Challenges
+  /challenges/{challengeId}/cancel:
+    patch:
+      parameters:
+      - description: Challenge ID (UUID)
+        in: path
+        name: challengeId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Challenge'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Cancel an active challenge
+      tags:
+      - Challenges
+  /challenges/{challengeId}/submit:
+    patch:
+      parameters:
+      - description: Challenge ID (UUID)
+        in: path
+        name: challengeId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Challenge'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Submit a challenge for approval
+      tags:
+      - Challenges
+  /challenges/{id}:
+    get:
+      parameters:
+      - description: Challenge ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Challenge'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get a challenge by ID
+      tags:
+      - Challenges
+  /challenges/{id}/assignments:
+    get:
+      parameters:
+      - description: Challenge ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.ChallengeAssignment'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List a challenge's per-assignee assignments (submit/approve status)
+      tags:
+      - Challenges
+  /challenges/assignments/{assignmentId}/approve:
+    patch:
+      parameters:
+      - description: Assignment ID (UUID)
+        in: path
+        name: assignmentId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.ChallengeAssignment'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Approve a submitted assignment and award points to that assignee
+      tags:
+      - Challenges
+  /challenges/me:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Challenge'
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get challenges assigned to the current user that are still open or
+        awaiting approval
+      tags:
+      - Challenges
+  /challenges/me/created:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Challenge'
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get challenges created by the current user
+      tags:
+      - Challenges
+  /chat/{friendId}/messages:
+    get:
+      parameters:
+      - description: Friend's user ID (UUID)
+        in: path
+        name: friendId
+        required: true
+        type: string
+      - description: Only return messages older than this RFC3339 timestamp (pagination
+          cursor)
+        in: query
+        name: before
+        type: string
+      - description: Max messages to return (default 50, capped at 100)
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Message'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get message history with a friend
+      tags:
+      - Chat
+  /chat/{friendId}/read:
+    post:
+      parameters:
+      - description: Friend's user ID (UUID)
+        in: path
+        name: friendId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Mark every message sent by a friend to the caller as read
+      tags:
+      - Chat
+  /friends:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.User'
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List my friends
+      tags:
+      - Friends
+  /friends/{userId}:
+    delete:
+      parameters:
+      - description: Friend's user ID (UUID)
+        in: path
+        name: userId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Remove a friend
+      tags:
+      - Friends
+  /friends/requests:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List my incoming and outgoing friend requests
+      tags:
+      - Friends
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Addressee
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/friendship.SendRequestRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.Friendship'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Conflict
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Send a friend request
+      tags:
+      - Friends
+  /friends/requests/{id}/accept:
+    post:
+      parameters:
+      - description: Friend request ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Friendship'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Accept a friend request
+      tags:
+      - Friends
+  /friends/requests/{id}/decline:
+    post:
+      parameters:
+      - description: Friend request ID (UUID)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Decline or cancel a friend request
+      tags:
+      - Friends
+  /rewards:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Reward data
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/reward.CreateRewardRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.Reward'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create a reward in my shop
+      tags:
+      - Rewards
+  /rewards/{rewardId}/cancel:
+    patch:
+      parameters:
+      - description: Reward ID (UUID)
+        in: path
+        name: rewardId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Reward'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Cancel an available reward
+      tags:
+      - Rewards
+  /rewards/{rewardId}/redeem:
+    patch:
+      parameters:
+      - description: Reward ID (UUID)
+        in: path
+        name: rewardId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Reward'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Redeem a reward using points
+      tags:
+      - Rewards
+  /rewards/me/given:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Reward'
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List rewards I have created (my shop management view)
+      tags:
+      - Rewards
+  /rewards/shop/{giverId}:
+    get:
+      parameters:
+      - description: Reward giver's user ID (UUID)
+        in: path
+        name: giverId
+        required: true
+        type: string
+      - description: Filter to available rewards only
+        in: query
+        name: available
+        type: boolean
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Reward'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: 'Browse a friend''s shop (rewards visible to me: public + restricted-to-me)'
+      tags:
+      - Rewards
+  /transactions/balances:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.UserPointBalance'
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get my point balances per giver
+      tags:
+      - Transactions
+  /transactions/me:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Transaction'
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get my transaction history
+      tags:
+      - Transactions
+  /users/{userId}:
+    get:
+      parameters:
+      - description: User ID (UUID)
+        in: path
+        name: userId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.User'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get user by ID
+      tags:
+      - Users
+  /users/me:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.User'
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get the authenticated user's profile
+      tags:
+      - Users
+  /users/username/{username}:
+    get:
+      parameters:
+      - description: Username
+        in: path
+        name: username
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.User'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get user by username
+      tags:
+      - Users
+securityDefinitions:
+  BearerAuth:
+    description: Use "Bearer <token>"
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

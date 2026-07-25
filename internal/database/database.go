@@ -14,7 +14,6 @@ import (
 var DB *gorm.DB
 
 func Connect() {
-	// 1. Construct the DSN using your environment variables
 	dsn := fmt.Sprintf(
 		"host=%s user=%s password=%s dbname=%s port=%s sslmode=disable TimeZone=Asia/Jakarta",
 		config.GetEnv("DB_HOST", "localhost"),
@@ -24,7 +23,6 @@ func Connect() {
 		config.GetEnv("DB_PORT", "5432"),
 	)
 
-	// 2. Open the connection
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v\nCheck if PostgreSQL is running and credentials are correct.", err)
@@ -32,14 +30,17 @@ func Connect() {
 
 	log.Println("Successfully connected to PostgreSQL!")
 
-	// 3. Execute AutoMigrate
 	log.Println("Running AutoMigrate...")
 	err = db.AutoMigrate(
 		&models.User{},
+		&models.Friendship{},
 		&models.Challenge{},
+		&models.ChallengeAssignment{},
 		&models.Reward{},
+		&models.RewardVisibility{},
 		&models.Transaction{},
-		&models.Group{},
+		&models.UserPointBalance{},
+		&models.Message{},
 	)
 	
 	if err != nil {

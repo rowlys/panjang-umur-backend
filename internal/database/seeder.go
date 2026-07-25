@@ -12,14 +12,12 @@ import (
 func Seed() {
 	log.Println("Seeding database with initial data...")
 
-	DB.Exec("TRUNCATE TABLE users, groups, challenges, rewards, transactions, user_groups CASCADE")
+	DB.Exec("TRUNCATE TABLE users, friendships, challenges, challenge_assignments, rewards, reward_visibilities, transactions, user_point_balances CASCADE")
 
 	bastenUser := SeedUser("basten", "Basten", "password123")
 	alleeceUser := SeedUser("alleece", "Alleece", "password123")
 
-	familyUsers := []models.User{bastenUser, alleeceUser}
-	
-	SeedGroup("Family", "Family group for daily challenges", familyUsers)
+	SeedFriendship(bastenUser, alleeceUser)
 
 	log.Println("Database seeding completed!")
 }
@@ -45,17 +43,17 @@ func SeedUser(username, name, password string) models.User {
 }
 
 
-func SeedGroup(name, description string, users []models.User) models.Group {
-	group := models.Group{
+func SeedFriendship(userA, userB models.User) models.Friendship {
+	friendship := models.Friendship{
 		ID:          uuid.New(),
-		Name:        name,
-		Description: description,
-		Users:       users,
+		RequesterID: userA.ID,
+		AddresseeID: userB.ID,
+		Status:      models.FriendshipAccepted,
 	}
 
-	if result := DB.Create(&group); result.Error != nil {
-		log.Fatalf("Failed to create group %s: %v", name, result.Error)
+	if result := DB.Create(&friendship); result.Error != nil {
+		log.Fatalf("Failed to create friendship between %s and %s: %v", userA.Username, userB.Username, result.Error)
 	}
 
-	return group
+	return friendship
 }

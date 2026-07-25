@@ -1,15 +1,35 @@
+// @title Panjang Umur API
+// @version 1.0
+// @description A health and longevity challenge API
+// @BasePath /api
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
+// @description Use "Bearer <token>"
 package main
 
 import (
 	"flag"
 	"log"
 	"net/http"
+	"strings"
+	"time"
 
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/rowlys/panjang-umur-backend/internal/config"
 	"github.com/rowlys/panjang-umur-backend/internal/database"
-	"github.com/rowlys/panjang-umur-backend/internal/handlers"
+	"github.com/rowlys/panjang-umur-backend/internal/domain/challenge"
+	"github.com/rowlys/panjang-umur-backend/internal/domain/chat"
+	"github.com/rowlys/panjang-umur-backend/internal/domain/friendship"
+	"github.com/rowlys/panjang-umur-backend/internal/domain/reward"
+	"github.com/rowlys/panjang-umur-backend/internal/domain/transaction"
+	"github.com/rowlys/panjang-umur-backend/internal/domain/user"
 	"github.com/rowlys/panjang-umur-backend/internal/middlewares"
+
+	_ "github.com/rowlys/panjang-umur-backend/docs"
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
 func main() {
@@ -18,13 +38,51 @@ func main() {
 
 	config.LoadConfig()
 	database.Connect()
-	
+
 	if *seederFlag {
 		database.Seed()
 		return
 	}
 
+	userRepo := user.NewRepository(database.DB)
+	userService := user.NewService(userRepo)
+	userHandler := user.NewHandler(userService)
+
+	transactionRepo := transaction.NewRepository(database.DB)
+	transactionService := transaction.NewService(transactionRepo)
+	transactionHandler := transaction.NewHandler(transactionService)
+
+	friendshipRepo := friendship.NewRepository(database.DB)
+	friendshipService := friendship.NewService(friendshipRepo)
+	friendshipHandler := friendship.NewHandler(friendshipService)
+
+	chatHub := chat.NewHub()
+	chatRepo := chat.NewRepository(database.DB)
+	chatService := chat.NewService(chatRepo, friendshipService, chatHub)
+	chatHandler := chat.NewHandler(chatService, chatHub)
+
+	challengeRepo := challenge.NewRepository(database.DB)
+	challengeService := challenge.NewService(challengeRepo, friendshipService, transactionService)
+	challengeHandler := challenge.NewHandler(challengeService)
+
+	rewardRepo := reward.NewRepository(database.DB)
+	rewardService := reward.NewService(rewardRepo, friendshipService, transactionService)
+	rewardHandler := reward.NewHandler(rewardService)
+
 	router := gin.Default()
+
+	router.Use(cors.New(cors.Config{
+		AllowOriginFunc: func(origin string) bool {
+			return strings.HasPrefix(origin, "http://localhost:") ||
+				strings.HasPrefix(origin, "http://127.0.0.1:")
+		},
+		AllowMethods:     []string{"GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
+		AllowCredentials: false,
+		MaxAge:           12 * time.Hour,
+	}))
+
+	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
 	router.GET("/ping", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
@@ -34,21 +92,24 @@ func main() {
 
 	api := router.Group("/api")
 	{
-		api.POST("/register", handlers.Register)
-		api.POST("/login", handlers.Login)
+		public := api.Group("/auth")
+		{
+			userHandler.RegisterAuthRoutes(public)
+		}
+
+		wsGroup := api.Group("/chat")
+		wsGroup.Use(middlewares.RequireAuthWS)
+		wsGroup.GET("/ws", chatHandler.ServeWS)
 
 		protected := api.Group("/")
-		protected.Use(middlewares.RequireAuth) 
+		protected.Use(middlewares.RequireAuth)
 		{
-			protected.GET("/challenges", handlers.GetAllChallenges)
-			protected.GET("/challenges/:id", handlers.GetChallengeByID)
-			protected.GET("/users/group/:groupId/challenges", handlers.GetMyGroupChallenges)
-			protected.GET("/users/group/:groupId/created-challenges", handlers.GetMyGroupCreatedChallenges)
-
-			protected.POST("/challenges/:groupId/create", handlers.CreateChallenge)
-
-			protected.PATCH("/challenges/:challengeId/submit", handlers.SubmitChallenge)
-			protected.PATCH("/challenges/:challengeId/approve", handlers.ApproveChallenge)
+			userHandler.RegisterProtectedRoutes(protected.Group("/users"))
+			challengeHandler.RegisterRoutes(protected.Group("/challenges"))
+			friendshipHandler.RegisterRoutes(protected.Group("/friends"))
+			transactionHandler.RegisterRoutes(protected.Group("/transactions"))
+			rewardHandler.RegisterRoutes(protected.Group("/rewards"))
+			chatHandler.RegisterRoutes(protected.Group("/chat"))
 		}
 	}
 

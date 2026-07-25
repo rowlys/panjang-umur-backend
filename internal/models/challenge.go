@@ -12,9 +12,8 @@ type ChallengeType int
 
 const (
 	StatusActive    ChallengeStatus = iota
-	StatusPending
-	StatusCompleted
 	StatusExpired
+	StatusCancelled
 )
 
 const (
@@ -28,14 +27,12 @@ type Challenge struct {
 	Title       string         `gorm:"not null" json:"title"`
 	Description string         `json:"description"`
 	Points  	int            `gorm:"not null" json:"points"`
-	Status      ChallengeStatus `gorm:"not null;default:0" json:"status"` 
-	Type        ChallengeType   `gorm:"not null;default:0" json:"type"` 
-	CreatorID   uuid.UUID         `gorm:"type: uuid;not null;index" json:"creatorId"`
-	AssigneeID  uuid.UUID        `gorm:"type: uuid;index" json:"assigneeId"`          // Pointer makes it nullable
+	Status      ChallengeStatus `gorm:"not null;default:0" json:"status"`
+	Type        ChallengeType   `gorm:"not null;default:0" json:"type"`
+	CreatorID   uuid.UUID         `gorm:"type:uuid;not null;index" json:"creatorId"`
+	Restricted  bool           `gorm:"not null;default:false" json:"restricted"`
 	CreatedAt   time.Time      `json:"createdAt"`
 	UpdatedAt   time.Time      `json:"updatedAt"`
-	DeletedAt   gorm.DeletedAt `gorm:"index" json:"-"`                   // Hidden from JSON responses
+	DeletedAt   gorm.DeletedAt `gorm:"index" json:"-"`
 	ExpiresAt   *time.Time     `json:"expiresAt"`
-
-	GroupID     uuid.UUID        `gorm:"type: uuid;not null;index" json:"groupId"`
 }

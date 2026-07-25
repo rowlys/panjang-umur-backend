@@ -11,8 +11,6 @@ type Repository interface {
 	Save(user *models.User) error
 	FindByID(id uuid.UUID) (*models.User, error)
 	FindByUsername(username string) (*models.User, error)
-	FindByGroup(groupID uuid.UUID) ([]models.User, error)
-	IsUserInGroup(userID uuid.UUID, groupID uuid.UUID) (bool, error)
 }
 
 type repository struct {
@@ -43,10 +41,4 @@ func (r *repository) FindByUsername(username string) (*models.User, error) {
 	return &user, err
 }
 
-func (r *repository) FindByGroup(groupID uuid.UUID) ([]models.User, error) {
-	var users []models.User
-	err := r.db.Joins("JOIN user_groups ON user_groups.user_id = users.id").
-		Where("user_groups.group_id = ?", groupID).Find(&users).Error
-	return users, err
-}
 

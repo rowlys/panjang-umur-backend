@@ -1,19 +1,24 @@
 package models
 
-import "time"
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
 
 type TransactionType int
 
 const (
-	Earned TransactionType = iota // 0
-	Spent                         // 1
+	Earned TransactionType = iota
+	Spent
 )
 
 type Transaction struct {
-	ID          string          `gorm:"primaryKey;type:varchar(50)" json:"id"`
-	UserID      string          `gorm:"not null;index" json:"userId"`
+	ID          uuid.UUID       `gorm:"primaryKey;type:uuid" json:"id"`
+	UserID      uuid.UUID       `gorm:"type:uuid;not null;index" json:"userId"`
+	GiverID     uuid.UUID       `gorm:"type:uuid;not null;index" json:"giverId"`
 	Amount      int             `gorm:"not null" json:"amount"`
 	Type        TransactionType `gorm:"not null" json:"type"`
-	ReferenceID string          `gorm:"not null" json:"referenceId"`
-	Timestamp   time.Time       `gorm:"autoCreateTime" json:"timestamp"` // GORM handles insertion time automatically
+	ReferenceID uuid.UUID       `gorm:"type:uuid;not null" json:"referenceId"`
+	Timestamp   time.Time       `gorm:"autoCreateTime" json:"timestamp"`
 }
