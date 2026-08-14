@@ -6,6 +6,7 @@
 // @in header
 // @name Authorization
 // @description Use "Bearer <token>"
+// @host localhost:8080
 package main
 
 import (
@@ -55,20 +56,20 @@ func main() {
 	friendshipRepo := friendship.NewRepository(database.DB)
 	friendshipService := friendship.NewService(friendshipRepo)
 	friendshipHandler := friendship.NewHandler(friendshipService)
-
+	
+	challengeRepo := challenge.NewRepository(database.DB)
+	challengeService := challenge.NewService(challengeRepo, friendshipService, transactionService)
+	challengeHandler := challenge.NewHandler(challengeService)
+	
+	rewardRepo := reward.NewRepository(database.DB)
+	rewardService := reward.NewService(rewardRepo, friendshipService, transactionService)
+	rewardHandler := reward.NewHandler(rewardService)
+	
 	chatHub := chat.NewHub()
 	chatRepo := chat.NewRepository(database.DB)
 	chatService := chat.NewService(chatRepo, friendshipService, chatHub)
 	chatHandler := chat.NewHandler(chatService, chatHub)
-
-	challengeRepo := challenge.NewRepository(database.DB)
-	challengeService := challenge.NewService(challengeRepo, friendshipService, transactionService)
-	challengeHandler := challenge.NewHandler(challengeService)
-
-	rewardRepo := reward.NewRepository(database.DB)
-	rewardService := reward.NewService(rewardRepo, friendshipService, transactionService)
-	rewardHandler := reward.NewHandler(rewardService)
-
+	
 	router := gin.Default()
 
 	router.Use(cors.New(cors.Config{
@@ -98,11 +99,11 @@ func main() {
 		}
 
 		wsGroup := api.Group("/chat")
-		wsGroup.Use(middlewares.RequireAuthWS)
+		wsGroup.Use(middlewares.RequireAuthWS(config.GetEnv("JWT_SECRET", "")))
 		wsGroup.GET("/ws", chatHandler.ServeWS)
 
 		protected := api.Group("/")
-		protected.Use(middlewares.RequireAuth)
+		protected.Use(middlewares.RequireAuth(config.GetEnv("JWT_SECRET", "")))
 		{
 			userHandler.RegisterProtectedRoutes(protected.Group("/users"))
 			challengeHandler.RegisterRoutes(protected.Group("/challenges"))

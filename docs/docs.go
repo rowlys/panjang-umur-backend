@@ -218,66 +218,6 @@ const docTemplate = `{
                 }
             }
         },
-        "/challenges/assignments/{assignmentId}/approve": {
-            "patch": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Challenges"
-                ],
-                "summary": "Approve a submitted assignment and award points to that assignee",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Assignment ID (UUID)",
-                        "name": "assignmentId",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/models.ChallengeAssignment"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
         "/challenges/me": {
             "get": {
                 "security": [
@@ -340,6 +280,129 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/challenges/submissions/{submissionId}/approve": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Challenges"
+                ],
+                "summary": "Approve a submitted challenge submission and award points to that user",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Submission ID (UUID)",
+                        "name": "submissionId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.ChallengeSubmission"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/challenges/{challengeId}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Challenges"
+                ],
+                "summary": "Delete a challenge",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Challenge ID (UUID)",
+                        "name": "challengeId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -521,7 +584,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/challenges/{id}/assignments": {
+        "/challenges/{id}/submissions": {
             "get": {
                 "security": [
                     {
@@ -534,7 +597,7 @@ const docTemplate = `{
                 "tags": [
                     "Challenges"
                 ],
-                "summary": "List a challenge's per-assignee assignments (submit/approve status)",
+                "summary": "List a challenge's submissions (submit/approve status per user/period)",
                 "parameters": [
                     {
                         "type": "string",
@@ -550,7 +613,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/models.ChallengeAssignment"
+                                "$ref": "#/definitions/models.ChallengeSubmission"
                             }
                         }
                     },
@@ -1508,6 +1571,11 @@ const docTemplate = `{
                 "points": {
                     "type": "integer"
                 },
+                "resetDay": {
+                    "type": "integer",
+                    "maximum": 6,
+                    "minimum": 0
+                },
                 "title": {
                     "type": "string"
                 },
@@ -1526,19 +1594,6 @@ const docTemplate = `{
                     "type": "string"
                 }
             }
-        },
-        "models.AssignmentStatus": {
-            "type": "integer",
-            "enum": [
-                0,
-                1,
-                2
-            ],
-            "x-enum-varnames": [
-                "AssignmentAssigned",
-                "AssignmentSubmitted",
-                "AssignmentApproved"
-            ]
         },
         "models.Challenge": {
             "type": "object",
@@ -1561,6 +1616,9 @@ const docTemplate = `{
                 "points": {
                     "type": "integer"
                 },
+                "resetDay": {
+                    "type": "integer"
+                },
                 "restricted": {
                     "type": "boolean"
                 },
@@ -1578,13 +1636,25 @@ const docTemplate = `{
                 }
             }
         },
-        "models.ChallengeAssignment": {
+        "models.ChallengeStatus": {
+            "type": "integer",
+            "enum": [
+                0,
+                1,
+                2,
+                3
+            ],
+            "x-enum-varnames": [
+                "StatusActive",
+                "StatusExpired",
+                "StatusCancelled",
+                "StatusCompleted"
+            ]
+        },
+        "models.ChallengeSubmission": {
             "type": "object",
             "properties": {
                 "approvedAt": {
-                    "type": "string"
-                },
-                "assigneeId": {
                     "type": "string"
                 },
                 "challengeId": {
@@ -1593,26 +1663,20 @@ const docTemplate = `{
                 "id": {
                     "type": "string"
                 },
+                "periodStart": {
+                    "description": "PeriodStart carries forward the same zero-value-sentinel convention as the old\nChallengeAssignment (see currentPeriodStart in service.go) so Bounty submissions,\nwhich have no recurrence, still get a stable uniqueness key.",
+                    "type": "string"
+                },
                 "status": {
-                    "$ref": "#/definitions/models.AssignmentStatus"
+                    "$ref": "#/definitions/models.SubmissionStatus"
                 },
                 "submittedAt": {
                     "type": "string"
+                },
+                "userId": {
+                    "type": "string"
                 }
             }
-        },
-        "models.ChallengeStatus": {
-            "type": "integer",
-            "enum": [
-                0,
-                1,
-                2
-            ],
-            "x-enum-varnames": [
-                "StatusActive",
-                "StatusExpired",
-                "StatusCancelled"
-            ]
         },
         "models.ChallengeType": {
             "type": "integer",
@@ -1728,6 +1792,17 @@ const docTemplate = `{
             "x-enum-varnames": [
                 "Public",
                 "Restricted"
+            ]
+        },
+        "models.SubmissionStatus": {
+            "type": "integer",
+            "enum": [
+                0,
+                1
+            ],
+            "x-enum-varnames": [
+                "SubmissionSubmitted",
+                "SubmissionApproved"
             ]
         },
         "models.Transaction": {

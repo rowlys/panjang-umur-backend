@@ -35,19 +35,29 @@ func Connect() {
 		&models.User{},
 		&models.Friendship{},
 		&models.Challenge{},
-		&models.ChallengeAssignment{},
+		&models.ChallengeAssignee{},
+		&models.ChallengeSubmission{},
 		&models.Reward{},
 		&models.RewardVisibility{},
 		&models.Transaction{},
 		&models.UserPointBalance{},
 		&models.Message{},
 	)
-	
+
 	if err != nil {
 		log.Fatalf("Failed to migrate database schemas: %v", err)
 	}
 
+	// One-time cleanup: challenge_assignments was replaced by challenge_assignees +
+	// challenge_submissions when the challenge system was split into an eligibility
+	// allowlist and a submission history.
+	if db.Migrator().HasTable("challenge_assignments") {
+		if err := db.Migrator().DropTable("challenge_assignments"); err != nil {
+			log.Fatalf("Failed to drop legacy challenge_assignments table: %v", err)
+		}
+	}
+
 	log.Println("Database schemas migrated successfully!")
-	
+
 	DB = db
 }

@@ -25,6 +25,7 @@ type CreateChallengeRequest struct {
 	Description string      `json:"description"`
 	Points      int         `json:"points" binding:"required,gt=0"`
 	Type        int         `json:"type"`
+	ResetDay    *int        `json:"resetDay" binding:"omitempty,min=0,max=6"`
 	AssigneeIDs []uuid.UUID `json:"assigneeIds"`
 	ExpiresAt   *time.Time  `json:"expiresAt"`
 }
@@ -40,10 +41,11 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 	rg.GET("/me/created", h.GetByCreator)
 	rg.POST("", h.Create)
 	rg.GET("/:id", h.GetByID)
-	rg.GET("/:id/assignments", h.GetAssignments)
+	rg.GET("/:id/submissions", h.GetSubmissions)
 	rg.PATCH("/:challengeId/submit", h.Submit)
 	rg.PATCH("/:challengeId/cancel", h.Cancel)
-	rg.PATCH("/assignments/:assignmentId/approve", h.Approve)
+	rg.PATCH("/submissions/:submissionId/approve", h.Approve)
+	rg.DELETE("/:challengeId", h.Delete)
 }
 
 // Create godoc
@@ -76,6 +78,7 @@ func (h *Handler) Create(c *gin.Context) {
 		Description: input.Description,
 		Points:      input.Points,
 		Type:        input.Type,
+		ResetDay:    input.ResetDay,
 		CreatorID:   userID,
 		AssigneeIDs: input.AssigneeIDs,
 		ExpiresAt:   input.ExpiresAt,
@@ -90,6 +93,38 @@ func (h *Handler) Create(c *gin.Context) {
 	c.JSON(http.StatusCreated, challenge)
 }
 
+// Delete godoc
+// @Summary      Delete a challenge
+// @Tags         Challenges
+// @Produce      json
+// @Security     BearerAuth
+// @Param        challengeId  path      string  true  "Challenge ID (UUID)"
+// @Success      200          {object}  map[string]string
+// @Failure      400          {object}  map[string]string
+// @Failure      403          {object}  map[string]string
+// @Failure      404          {object}  map[string]string
+// @Router       /challenges/{challengeId} [delete]
+func (h *Handler) Delete(c *gin.Context) {
+	challengeId, err := uuid.Parse(c.Param("challengeId"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid challenge ID"})
+		return
+	}
+
+	userID, ok := httputil.ParseUserID(c)
+	if !ok {
+		return
+	}
+
+	err = h.service.Delete(c.Request.Context(), challengeId, userID)
+	if err != nil {
+		code, msg := httputil.ResolveServiceError(err)
+		c.JSON(code, gin.H{"error": msg})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Challenge deleted successfully"})
+}
 
 // Submit godoc
 // @Summary      Submit a challenge for approval
@@ -124,22 +159,21 @@ func (h *Handler) Submit(c *gin.Context) {
 	c.JSON(http.StatusOK, challenge)
 }
 
-
 // Approve godoc
-// @Summary      Approve a submitted assignment and award points to that assignee
+// @Summary      Approve a submitted challenge submission and award points to that user
 // @Tags         Challenges
 // @Produce      json
 // @Security     BearerAuth
-// @Param        assignmentId  path      string  true  "Assignment ID (UUID)"
-// @Success      200           {object}  models.ChallengeAssignment
+// @Param        submissionId  path      string  true  "Submission ID (UUID)"
+// @Success      200           {object}  models.ChallengeSubmission
 // @Failure      400           {object}  map[string]string
 // @Failure      403           {object}  map[string]string
 // @Failure      404           {object}  map[string]string
-// @Router       /challenges/assignments/{assignmentId}/approve [patch]
+// @Router       /challenges/submissions/{submissionId}/approve [patch]
 func (h *Handler) Approve(c *gin.Context) {
-	id, err := uuid.Parse(c.Param("assignmentId"))
+	id, err := uuid.Parse(c.Param("submissionId"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid assignment ID"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid submission ID"})
 		return
 	}
 
@@ -148,14 +182,14 @@ func (h *Handler) Approve(c *gin.Context) {
 		return
 	}
 
-	assignment, err := h.service.Approve(c.Request.Context(), id, userID)
+	submission, err := h.service.Approve(c.Request.Context(), id, userID)
 	if err != nil {
 		code, msg := httputil.ResolveServiceError(err)
 		c.JSON(code, gin.H{"error": msg})
 		return
 	}
 
-	c.JSON(http.StatusOK, assignment)
+	c.JSON(http.StatusOK, submission)
 }
 
 // Cancel godoc
@@ -215,7 +249,6 @@ func (h *Handler) GetAll(c *gin.Context) {
 	c.JSON(http.StatusOK, challenges)
 }
 
-
 // GetByID godoc
 // @Summary      Get a challenge by ID
 // @Tags         Challenges
@@ -248,18 +281,18 @@ func (h *Handler) GetByID(c *gin.Context) {
 	c.JSON(http.StatusOK, challenge)
 }
 
-// GetAssignments godoc
-// @Summary      List a challenge's per-assignee assignments (submit/approve status)
+// GetSubmissions godoc
+// @Summary      List a challenge's submissions (submit/approve status per user/period)
 // @Tags         Challenges
 // @Produce      json
 // @Security     BearerAuth
 // @Param        id   path      string  true  "Challenge ID (UUID)"
-// @Success      200  {array}   models.ChallengeAssignment
+// @Success      200  {array}   models.ChallengeSubmission
 // @Failure      400  {object}  map[string]string
 // @Failure      403  {object}  map[string]string
 // @Failure      404  {object}  map[string]string
-// @Router       /challenges/{id}/assignments [get]
-func (h *Handler) GetAssignments(c *gin.Context) {
+// @Router       /challenges/{id}/submissions [get]
+func (h *Handler) GetSubmissions(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid challenge ID"})
@@ -271,14 +304,14 @@ func (h *Handler) GetAssignments(c *gin.Context) {
 		return
 	}
 
-	assignments, err := h.service.GetAssignments(userID, id)
+	submissions, err := h.service.GetSubmissions(userID, id)
 	if err != nil {
 		code, msg := httputil.ResolveServiceError(err)
 		c.JSON(code, gin.H{"error": msg})
 		return
 	}
 
-	c.JSON(http.StatusOK, assignments)
+	c.JSON(http.StatusOK, submissions)
 }
 
 // GetByAssignee godoc
@@ -295,7 +328,7 @@ func (h *Handler) GetByAssignee(c *gin.Context) {
 		return
 	}
 
-	challenges, err := h.service.GetByAssignee(userID, []models.AssignmentStatus{models.AssignmentAssigned, models.AssignmentSubmitted})
+	challenges, err := h.service.GetByAssignee(userID)
 	if err != nil {
 		code, msg := httputil.ResolveServiceError(err)
 		c.JSON(code, gin.H{"error": msg})
@@ -304,7 +337,6 @@ func (h *Handler) GetByAssignee(c *gin.Context) {
 
 	c.JSON(http.StatusOK, challenges)
 }
-
 
 // GetByCreator godoc
 // @Summary      Get challenges created by the current user
