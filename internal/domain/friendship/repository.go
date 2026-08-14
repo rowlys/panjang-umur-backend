@@ -67,11 +67,20 @@ func (r *repository) AreFriends(userA, userB uuid.UUID) (bool, error) {
 
 func (r *repository) ListFriends(userID uuid.UUID) ([]models.User, error) {
 	var users []models.User
-	err := r.db.Joins(
-		"JOIN friendships ON (friendships.requester_id = ? AND friendships.addressee_id = users.id) OR (friendships.addressee_id = ? AND friendships.requester_id = users.id)",
-		userID, userID,
-	).Where("friendships.status = ?", models.FriendshipAccepted).Find(&users).Error
-	return users, err
+
+    q1 := r.db.Model(&models.User{}).
+        Joins("INNER JOIN friendships ON friendships.addressee_id = users.id").
+        Where("friendships.requester_id = ?", userID).
+        Where("friendships.status = ?", models.FriendshipAccepted)
+
+    q2 := r.db.Model(&models.User{}).
+        Joins("INNER JOIN friendships ON friendships.requester_id = users.id").
+        Where("friendships.addressee_id = ?", userID).
+        Where("friendships.status = ?", models.FriendshipAccepted)
+
+    err := r.db.Raw("? UNION ?", q1, q2).Scan(&users).Error
+
+    return users, err
 }
 
 func (r *repository) ListIncoming(userID uuid.UUID) ([]models.Friendship, error) {
