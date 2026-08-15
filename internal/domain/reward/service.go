@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/rowlys/panjang-umur-backend/internal/httputil"
@@ -12,12 +13,13 @@ import (
 )
 
 type CreateRewardInput struct {
-	Title          string               `json:"title"`
-	Description    string               `json:"description"`
-	Cost           int                  `json:"cost"`
+	Title          string                      `json:"title"`
+	Description    string                      `json:"description"`
+	Cost           int                         `json:"cost"`
 	Visibility     models.RewardVisibilityMode `json:"visibility"`
-	AllowedUserIDs []uuid.UUID          `json:"allowedUserIds"`
-	GiverID        uuid.UUID            `json:"giverId"`
+	Stock          int                         `json:"stock"`
+	AllowedUserIDs []uuid.UUID                 `json:"allowedUserIds"`
+	GiverID        uuid.UUID                   `json:"giverId"`
 }
 
 type FriendService interface {
@@ -25,6 +27,7 @@ type FriendService interface {
 }
 
 type TransactionService interface {
+	RecordEarnedTx(db *gorm.DB, ownerID, giverID uuid.UUID, amount int, referenceID uuid.UUID) error
 	RecordSpentTx(db *gorm.DB, ownerID, giverID uuid.UUID, amount int, referenceID uuid.UUID) error
 	GetBalance(ownerID, giverID uuid.UUID) (int, error)
 	GetBalanceTx(db *gorm.DB, ownerID, giverID uuid.UUID) (int, error)
@@ -36,6 +39,14 @@ type Service interface {
 	Cancel(ctx context.Context, rewardID uuid.UUID, callerID uuid.UUID) (*models.Reward, error)
 	GetShopByGiver(callerID uuid.UUID, giverID uuid.UUID, availableOnly bool) ([]models.Reward, error)
 	GetByGiver(giverID uuid.UUID) ([]models.Reward, error)
+
+	MarkClaimFulfilled(claimID uuid.UUID, callerID uuid.UUID) (*models.RewardClaim, error)
+	MarkClaimRefundRequested(claimID uuid.UUID, callerID uuid.UUID, reason string) (*models.RewardClaim, error)
+	MarkClaimRefunded(claimID uuid.UUID, callerID uuid.UUID) (*models.RewardClaim, error)
+
+	GetClaimByID(claimID uuid.UUID) (*models.RewardClaim, error)
+	GetClaimsByRedeemer(redeemerID uuid.UUID) ([]models.RewardClaim, error)
+	GetClaimsByGiver(giverID uuid.UUID) ([]models.RewardClaim, error)
 }
 
 type service struct {
@@ -68,7 +79,8 @@ func (s *service) Create(ctx context.Context, input CreateRewardInput) (*models.
 		Cost:          input.Cost,
 		RewardGiverID: input.GiverID,
 		Visibility:    input.Visibility,
-		IsAvailable:   true,
+		Stock:         input.Stock,
+		// IsAvailable:   true,
 	}
 
 	if err := s.repo.Transact(func(tx *gorm.DB) error {
@@ -91,7 +103,7 @@ func (s *service) Redeem(ctx context.Context, rewardID uuid.UUID, redeemerID uui
 		return nil, &httputil.ServiceError{Code: http.StatusNotFound, Message: "Reward not found"}
 	}
 
-	if !reward.IsAvailable {
+	if reward.Stock <= 0 {
 		return nil, &httputil.ServiceError{Code: http.StatusBadRequest, Message: "Reward has already been redeemed"}
 	}
 
@@ -113,8 +125,7 @@ func (s *service) Redeem(ctx context.Context, rewardID uuid.UUID, redeemerID uui
 		}
 	}
 
-	reward.IsAvailable = false
-	reward.RedeemedByID = &redeemerID
+	reward.Stock -= 1
 
 	if err := s.repo.Transact(func(tx *gorm.DB) error {
 		balance, err := s.transactionService.GetBalanceTx(tx, redeemerID, reward.RewardGiverID)
@@ -127,6 +138,18 @@ func (s *service) Redeem(ctx context.Context, rewardID uuid.UUID, redeemerID uui
 		if err := s.repo.SaveTx(tx, reward); err != nil {
 			return err
 		}
+
+		if err := s.repo.CreateClaimTx(tx, &models.RewardClaim{
+			ID:         uuid.New(),
+			RewardID:   reward.ID,
+			RedeemerID: redeemerID,
+			GiverID:    reward.RewardGiverID,
+			Price:      reward.Cost,
+			Status:     models.ClaimStatusPending,
+		}); err != nil {
+			return err
+		}
+
 		return s.transactionService.RecordSpentTx(tx, redeemerID, reward.RewardGiverID, reward.Cost, reward.ID)
 	}); err != nil {
 		var svcErr *httputil.ServiceError
@@ -149,11 +172,11 @@ func (s *service) Cancel(ctx context.Context, rewardID uuid.UUID, callerID uuid.
 		return nil, &httputil.ServiceError{Code: http.StatusForbidden, Message: "Only the reward giver can cancel it"}
 	}
 
-	if !reward.IsAvailable {
+	if reward.Stock <= 0 {
 		return nil, &httputil.ServiceError{Code: http.StatusBadRequest, Message: "Reward has already been redeemed"}
 	}
 
-	reward.IsAvailable = false
+	reward.Stock = 0
 	if err := s.repo.Save(reward); err != nil {
 		return nil, &httputil.ServiceError{Code: http.StatusInternalServerError, Message: "Failed to cancel reward"}
 	}
@@ -182,4 +205,107 @@ func (s *service) GetByGiver(giverID uuid.UUID) ([]models.Reward, error) {
 		return nil, &httputil.ServiceError{Code: http.StatusInternalServerError, Message: "Failed to fetch rewards"}
 	}
 	return rewards, nil
+}
+
+func (s *service) MarkClaimFulfilled(claimID uuid.UUID, callerID uuid.UUID) (*models.RewardClaim, error) {
+	claim, err := s.repo.FindClaimByID(claimID)
+	if err != nil {
+		return nil, &httputil.ServiceError{Code: http.StatusNotFound, Message: "Claim not found"}
+	}
+
+	if claim.RedeemerID != callerID {
+		return nil, &httputil.ServiceError{Code: http.StatusForbidden, Message: "Only the redeemer can mark the claim as fulfilled"}
+	}
+
+	if claim.Status != models.ClaimStatusPending {
+		return nil, &httputil.ServiceError{Code: http.StatusBadRequest, Message: "Claim is not in a pending state"}
+	}
+
+	now := time.Now()
+	claim.Status = models.ClaimStatusFulfilled
+	claim.FulfilledAt = &now
+
+	if err := s.repo.UpdateClaimTx(nil, claim); err != nil {
+		return nil, &httputil.ServiceError{Code: http.StatusInternalServerError, Message: "Failed to update claim status"}
+	}
+
+	return claim, nil
+}
+
+func (s *service) MarkClaimRefundRequested(claimID uuid.UUID, callerID uuid.UUID, reason string) (*models.RewardClaim, error) {
+	claim, err := s.repo.FindClaimByID(claimID)
+	if err != nil {
+		return nil, &httputil.ServiceError{Code: http.StatusNotFound, Message: "Claim not found"}
+	}
+
+	if claim.RedeemerID != callerID {
+		return nil, &httputil.ServiceError{Code: http.StatusForbidden, Message: "Only the redeemer can request a refund"}
+	}
+
+	if claim.Status != models.ClaimStatusPending {
+		return nil, &httputil.ServiceError{Code: http.StatusBadRequest, Message: "Claim is not in a fulfilled state"}
+	}
+
+	claim.Status = models.ClaimStatusRefundRequested
+	claim.RefundReason = &reason
+
+	if err := s.repo.UpdateClaimTx(nil, claim); err != nil {
+		return nil, &httputil.ServiceError{Code: http.StatusInternalServerError, Message: "Failed to update claim status"}
+	}
+
+	return claim, nil
+}
+
+func (s *service) MarkClaimRefunded(claimID uuid.UUID, callerID uuid.UUID) (*models.RewardClaim, error) {
+	claim, err := s.repo.FindClaimByID(claimID)
+	if err != nil {
+		return nil, &httputil.ServiceError{Code: http.StatusNotFound, Message: "Claim not found"}
+	}
+
+	if claim.GiverID != callerID {
+		return nil, &httputil.ServiceError{Code: http.StatusForbidden, Message: "Only the giver can mark the claim as refunded"}
+	}
+
+	if claim.Status != models.ClaimStatusRefundRequested {
+		return nil, &httputil.ServiceError{Code: http.StatusBadRequest, Message: "Claim is not in a refund requested state"}
+	}
+
+	claim.Status = models.ClaimStatusRefunded
+	now := time.Now()
+	claim.ResolvedAt = &now
+
+	if err := s.repo.Transact(func(tx *gorm.DB) error {
+		if err := s.repo.UpdateClaimTx(tx, claim); err != nil {
+			return err
+		}
+		return s.transactionService.RecordEarnedTx(tx, claim.RedeemerID, claim.GiverID, claim.Price, claim.ID)
+	}); err != nil {
+		return nil, &httputil.ServiceError{Code: http.StatusInternalServerError, Message: "Failed to process refund"}
+	}
+
+	return claim, nil
+}
+
+func (s *service) GetClaimByID(claimID uuid.UUID) (*models.RewardClaim, error) {
+	claim, err := s.repo.FindClaimByID(claimID)
+	if err != nil {
+		return nil, &httputil.ServiceError{Code: http.StatusNotFound, Message: "Claim not found"}
+	}
+	return claim, nil
+}
+
+func (s *service) GetClaimsByRedeemer(redeemerID uuid.UUID) ([]models.RewardClaim, error) {
+	claims, err := s.repo.FindClaimsByRedeemer(redeemerID)
+	if err != nil {
+		return nil, &httputil.ServiceError{Code: http.StatusInternalServerError, Message: "Failed to fetch claims"}
+	}
+	return claims, nil
+}
+
+func (s *service) GetClaimsByGiver(giverID uuid.UUID) ([]models.RewardClaim, error) {
+	claims, err := s.repo.FindClaimsByGiver(giverID)
+	if err != nil {
+		return nil, &httputil.ServiceError{Code: http.StatusInternalServerError, Message: "Failed to fetch claims"}
+	}
+	return claims, nil
 }

@@ -18,6 +18,7 @@ type CreateRewardRequest struct {
 	Description    string                      `json:"description"`
 	Cost           int                         `json:"cost" binding:"required,gt=0"`
 	Visibility     models.RewardVisibilityMode `json:"visibility"`
+	Stock 		   int                         `json:"stock" binding:"required,gt=0"`
 	AllowedUserIDs []uuid.UUID                 `json:"allowedUserIds"`
 }
 
@@ -63,6 +64,7 @@ func (h *Handler) Create(c *gin.Context) {
 		Description:    input.Description,
 		Cost:           input.Cost,
 		Visibility:     input.Visibility,
+		Stock:		    input.Stock,
 		AllowedUserIDs: input.AllowedUserIDs,
 		GiverID:        userID,
 	})
@@ -199,4 +201,20 @@ func (h *Handler) GetByGiver(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, rewards)
+}
+
+func (h *Handler) GetClaimsByRedeemer(c *gin.Context) {
+	userID, ok := httputil.ParseUserID(c)
+	if !ok {
+		return
+	}
+
+	claims, err := h.service.GetClaimsByRedeemer(userID)
+	if err != nil {
+		code, msg := httputil.ResolveServiceError(err)
+		c.JSON(code, gin.H{"error": msg})
+		return
+	}
+
+	c.JSON(http.StatusOK, claims)
 }

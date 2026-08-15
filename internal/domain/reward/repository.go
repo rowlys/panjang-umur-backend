@@ -17,6 +17,12 @@ type Repository interface {
 	FindRedeemableByUser(userID, giverID uuid.UUID, availableOnly bool) ([]models.Reward, error)
 	AddVisibilityTx(tx *gorm.DB, rewardID uuid.UUID, userIDs []uuid.UUID) error
 	IsVisibleTo(rewardID, userID uuid.UUID) (bool, error)
+
+	CreateClaimTx(tx *gorm.DB, claim *models.RewardClaim) error
+	UpdateClaimTx(tx *gorm.DB, claim *models.RewardClaim) error
+	FindClaimByID(id uuid.UUID) (*models.RewardClaim, error)
+	FindClaimsByRedeemer(redeemerID uuid.UUID) ([]models.RewardClaim, error)
+	FindClaimsByGiver(giverID uuid.UUID) ([]models.RewardClaim, error)
 }
 
 type repository struct {
@@ -89,4 +95,30 @@ func (r *repository) IsVisibleTo(rewardID, userID uuid.UUID) (bool, error) {
 	var count int64
 	err := r.db.Model(&models.RewardVisibility{}).Where("reward_id = ? AND user_id = ?", rewardID, userID).Count(&count).Error
 	return count > 0, err
+}
+
+func (r *repository) CreateClaimTx(tx *gorm.DB, claim *models.RewardClaim) error {
+	return tx.Create(claim).Error
+}
+
+func (r *repository) UpdateClaimTx(tx *gorm.DB, claim *models.RewardClaim) error {
+	return tx.Save(claim).Error
+}
+
+func (r *repository) FindClaimByID(id uuid.UUID) (*models.RewardClaim, error) {
+	var claim models.RewardClaim
+	err := r.db.Where("id = ?", id).First(&claim).Error
+	return &claim, err
+}
+
+func (r *repository) FindClaimsByRedeemer(redeemerID uuid.UUID) ([]models.RewardClaim, error) {
+	var claims []models.RewardClaim
+	err := r.db.Where("redeemer_id = ?", redeemerID).Find(&claims).Error
+	return claims, err
+}
+
+func (r *repository) FindClaimsByGiver(giverID uuid.UUID) ([]models.RewardClaim, error) {
+	var claims []models.RewardClaim
+	err := r.db.Where("giver_id = ?", giverID).Find(&claims).Error
+	return claims, err
 }

@@ -19,8 +19,8 @@ type Reward struct {
 	Cost          int                  `gorm:"not null" json:"cost"`
 	RewardGiverID uuid.UUID            `gorm:"type:uuid;not null;index" json:"rewardGiverId"`
 	Visibility    RewardVisibilityMode `gorm:"not null;default:0" json:"visibility"`
-	RedeemedByID  *uuid.UUID           `gorm:"type:uuid;index" json:"redeemedById"`
-	IsAvailable   bool                 `gorm:"not null;default:true" json:"isAvailable"`
+	Stock		  int                 `json:"stock"`
+	// IsAvailable   bool                 `gorm:"not null;default:true" json:"isAvailable"`
 	CreatedAt     time.Time            `json:"createdAt"`
 	UpdatedAt     time.Time            `json:"updatedAt"`
 }
