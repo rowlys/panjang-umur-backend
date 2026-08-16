@@ -11,6 +11,7 @@ type Repository interface {
 	Save(user *models.User) error
 	FindByID(id uuid.UUID) (*models.User, error)
 	FindByUsername(username string) (*models.User, error)
+	FindByIDs(ids []uuid.UUID) ([]*models.User, error)
 }
 
 type repository struct {
@@ -41,4 +42,8 @@ func (r *repository) FindByUsername(username string) (*models.User, error) {
 	return &user, err
 }
 
-
+func (r *repository) FindByIDs(ids []uuid.UUID) ([]*models.User, error) {
+	var users []*models.User
+	err := r.db.Where("id IN ?", ids).Find(&users).Error
+	return users, err
+}

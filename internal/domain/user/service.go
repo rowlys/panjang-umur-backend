@@ -27,6 +27,7 @@ type Service interface {
 	Login(ctx context.Context, input LoginInput) (*LoginResponse, error)
 	GetByID(id uuid.UUID) (*models.User, error)
 	GetByUsername(username string) (*models.User, error)
+	GetByIDs(ids []uuid.UUID) ([]*models.User, error)
 }
 
 type service struct {
@@ -103,4 +104,8 @@ func (s *service) GetByID(id uuid.UUID) (*models.User, error) {
 
 func (s *service) GetByUsername(username string) (*models.User, error) {
 	return s.repo.FindByUsername(username)
+}
+
+func (s *service) GetByIDs(ids []uuid.UUID) ([]*models.User, error) {
+	return s.repo.FindByIDs(ids)
 }
