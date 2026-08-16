@@ -1115,7 +1115,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/rewards/me/given": {
+        "/rewards/claims/given": {
             "get": {
                 "security": [
                     {
@@ -1128,7 +1128,7 @@ const docTemplate = `{
                 "tags": [
                     "Rewards"
                 ],
-                "summary": "List rewards I have created (my shop management view)",
+                "summary": "List of rewards I have given",
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -1136,6 +1136,321 @@ const docTemplate = `{
                             "type": "array",
                             "items": {
                                 "$ref": "#/definitions/models.Reward"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/rewards/claims/me": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Rewards"
+                ],
+                "summary": "List rewards I have redeemed (my claim history)",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/reward.RewardClaimHistoryResponse"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/rewards/claims/{claimId}/fulfill": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Rewards"
+                ],
+                "summary": "Mark a reward claim as fulfilled",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Claim ID (UUID)",
+                        "name": "claimId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.RewardClaim"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/rewards/claims/{claimId}/refund/approve": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Rewards"
+                ],
+                "summary": "Approve a refund request for a reward claim",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Claim ID (UUID)",
+                        "name": "claimId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.RewardClaim"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/rewards/claims/{claimId}/refund/request": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Rewards"
+                ],
+                "summary": "Request a refund for a reward claim",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Claim ID (UUID)",
+                        "name": "claimId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Reason for refund request",
+                        "name": "reason",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.RewardClaim"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/rewards/shop/me": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Rewards"
+                ],
+                "summary": "Browse my own shop (rewards visible to me: public + restricted-to-me)",
+                "parameters": [
+                    {
+                        "type": "boolean",
+                        "description": "Filter to available rewards only",
+                        "name": "available",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.Reward"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
                             }
                         }
                     },
@@ -1691,6 +2006,21 @@ const docTemplate = `{
                 "Weekly"
             ]
         },
+        "models.ClaimStatus": {
+            "type": "integer",
+            "enum": [
+                0,
+                1,
+                2,
+                3
+            ],
+            "x-enum-varnames": [
+                "ClaimStatusPending",
+                "ClaimStatusFulfilled",
+                "ClaimStatusRefundRequested",
+                "ClaimStatusRefunded"
+            ]
+        },
         "models.Friendship": {
             "type": "object",
             "properties": {
@@ -1766,11 +2096,11 @@ const docTemplate = `{
                 "isAvailable": {
                     "type": "boolean"
                 },
-                "redeemedById": {
-                    "type": "string"
-                },
                 "rewardGiverId": {
                     "type": "string"
+                },
+                "stock": {
+                    "type": "integer"
                 },
                 "title": {
                     "type": "string"
@@ -1780,6 +2110,41 @@ const docTemplate = `{
                 },
                 "visibility": {
                     "$ref": "#/definitions/models.RewardVisibilityMode"
+                }
+            }
+        },
+        "models.RewardClaim": {
+            "type": "object",
+            "properties": {
+                "fulfilledAt": {
+                    "type": "string"
+                },
+                "giverId": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "price": {
+                    "type": "integer"
+                },
+                "redeemedAt": {
+                    "type": "string"
+                },
+                "refundReason": {
+                    "type": "string"
+                },
+                "resolvedAt": {
+                    "type": "string"
+                },
+                "rewardId": {
+                    "type": "string"
+                },
+                "status": {
+                    "$ref": "#/definitions/models.ClaimStatus"
+                },
+                "userId": {
+                    "type": "string"
                 }
             }
         },
@@ -1880,6 +2245,7 @@ const docTemplate = `{
             "type": "object",
             "required": [
                 "cost",
+                "stock",
                 "title"
             ],
             "properties": {
@@ -1895,11 +2261,49 @@ const docTemplate = `{
                 "description": {
                     "type": "string"
                 },
+                "stock": {
+                    "type": "integer"
+                },
                 "title": {
                     "type": "string"
                 },
                 "visibility": {
                     "$ref": "#/definitions/models.RewardVisibilityMode"
+                }
+            }
+        },
+        "reward.RewardClaimHistoryResponse": {
+            "type": "object",
+            "properties": {
+                "fulfilledAt": {
+                    "type": "string"
+                },
+                "giverId": {
+                    "type": "string"
+                },
+                "giverUsername": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "price": {
+                    "type": "integer"
+                },
+                "redeemedAt": {
+                    "type": "string"
+                },
+                "redeemerId": {
+                    "type": "string"
+                },
+                "resolvedAt": {
+                    "type": "string"
+                },
+                "rewardId": {
+                    "type": "string"
+                },
+                "status": {
+                    "$ref": "#/definitions/models.ClaimStatus"
                 }
             }
         },

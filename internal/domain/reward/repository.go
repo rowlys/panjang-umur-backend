@@ -14,15 +14,17 @@ type Repository interface {
 	Transact(fn func(*gorm.DB) error) error
 	FindByID(id uuid.UUID) (*models.Reward, error)
 	FindByGiver(giverID uuid.UUID) ([]models.Reward, error)
-	FindRedeemableByUser(userID, giverID uuid.UUID, availableOnly bool) ([]models.Reward, error)
+	FindShopByGiver(userID, giverID uuid.UUID, availableOnly bool) ([]models.Reward, error)
 	AddVisibilityTx(tx *gorm.DB, rewardID uuid.UUID, userIDs []uuid.UUID) error
 	IsVisibleTo(rewardID, userID uuid.UUID) (bool, error)
-
+	
 	CreateClaimTx(tx *gorm.DB, claim *models.RewardClaim) error
-	UpdateClaimTx(tx *gorm.DB, claim *models.RewardClaim) error
+	SaveClaim(claim *models.RewardClaim) error
+	SaveClaimTx(tx *gorm.DB, claim *models.RewardClaim) error
 	FindClaimByID(id uuid.UUID) (*models.RewardClaim, error)
 	FindClaimsByRedeemer(redeemerID uuid.UUID) ([]models.RewardClaim, error)
 	FindClaimsByGiver(giverID uuid.UUID) ([]models.RewardClaim, error)
+	FindClaimsGivenByID(giverID uuid.UUID) ([]models.RewardClaim, error)
 }
 
 type repository struct {
@@ -59,18 +61,28 @@ func (r *repository) FindByID(id uuid.UUID) (*models.Reward, error) {
 	return &reward, err
 }
 
-func (r *repository) FindRedeemableByUser(userID, giverID uuid.UUID, availableOnly bool) ([]models.Reward, error) {
+func (r *repository) FindShopByGiver(userID, giverID uuid.UUID, availableOnly bool) ([]models.Reward, error) {
 	var rewards []models.Reward
-	q := r.db.Where(
-		`reward_giver_id = ? AND (
-			visibility = ? OR EXISTS (SELECT 1 FROM reward_visibilities WHERE reward_visibilities.reward_id = rewards.id AND reward_visibilities.user_id = ?)
-		)`,
-		giverID, models.Public, userID,
-	)
-	if availableOnly {
-		q = q.Where("is_available = true")
+
+	q := r.db.Where("reward_giver_id = ?", giverID)
+	
+	if userID != giverID {
+		q := r.db.Where(
+			
+			"visibility = ? OR EXISTS (SELECT 1 FROM reward_visibilities WHERE reward_visibilities.reward_id = rewards.id AND reward_visibilities.user_id = ?)",
+			models.Public, userID,
+		)
+		if availableOnly {
+			q = q.Where("is_available = true")
+		}
+	} else {
+		if availableOnly {
+			q = q.Where("is_available = true")
+		}
 	}
+	
 	err := q.Find(&rewards).Error
+	
 	return rewards, err
 }
 
@@ -101,7 +113,11 @@ func (r *repository) CreateClaimTx(tx *gorm.DB, claim *models.RewardClaim) error
 	return tx.Create(claim).Error
 }
 
-func (r *repository) UpdateClaimTx(tx *gorm.DB, claim *models.RewardClaim) error {
+func (r *repository) SaveClaim(claim *models.RewardClaim) error {
+	return r.db.Save(claim).Error
+}
+
+func (r *repository) SaveClaimTx(tx *gorm.DB, claim *models.RewardClaim) error {
 	return tx.Save(claim).Error
 }
 
@@ -118,6 +134,12 @@ func (r *repository) FindClaimsByRedeemer(redeemerID uuid.UUID) ([]models.Reward
 }
 
 func (r *repository) FindClaimsByGiver(giverID uuid.UUID) ([]models.RewardClaim, error) {
+	var claims []models.RewardClaim
+	err := r.db.Where("giver_id = ?", giverID).Find(&claims).Error
+	return claims, err
+}
+
+func (r *repository) FindClaimsGivenByID(giverID uuid.UUID) ([]models.RewardClaim, error) {
 	var claims []models.RewardClaim
 	err := r.db.Where("giver_id = ?", giverID).Find(&claims).Error
 	return claims, err

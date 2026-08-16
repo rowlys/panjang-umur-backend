@@ -62,7 +62,7 @@ func main() {
 	challengeHandler := challenge.NewHandler(challengeService)
 	
 	rewardRepo := reward.NewRepository(database.DB)
-	rewardService := reward.NewService(rewardRepo, friendshipService, transactionService)
+	rewardService := reward.NewService(rewardRepo, userService, friendshipService, transactionService)
 	rewardHandler := reward.NewHandler(rewardService)
 	
 	chatHub := chat.NewHub()

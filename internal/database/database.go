@@ -39,6 +39,7 @@ func Connect() {
 		&models.ChallengeSubmission{},
 		&models.Reward{},
 		&models.RewardVisibility{},
+		&models.RewardClaim{},
 		&models.Transaction{},
 		&models.UserPointBalance{},
 		&models.Message{},
