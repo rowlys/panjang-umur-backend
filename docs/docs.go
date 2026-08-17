@@ -290,6 +290,42 @@ const docTemplate = `{
                 }
             }
         },
+        "/challenges/proof-upload-url": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Challenges"
+                ],
+                "summary": "Generate a presigned URL for uploading a proof image to S3",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/challenges/submissions/{submissionId}/approve": {
             "patch": {
                 "security": [
@@ -494,6 +530,15 @@ const docTemplate = `{
                         "name": "challengeId",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "description": "Optional proof image",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/challenge.SubmitChallengeRequest"
+                        }
                     }
                 ],
                 "responses": {
@@ -1899,6 +1944,14 @@ const docTemplate = `{
                 }
             }
         },
+        "challenge.SubmitChallengeRequest": {
+            "type": "object",
+            "properties": {
+                "proofImageId": {
+                    "type": "string"
+                }
+            }
+        },
         "friendship.SendRequestRequest": {
             "type": "object",
             "required": [
@@ -1979,7 +2032,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "periodStart": {
-                    "description": "PeriodStart carries forward the same zero-value-sentinel convention as the old\nChallengeAssignment (see currentPeriodStart in service.go) so Bounty submissions,\nwhich have no recurrence, still get a stable uniqueness key.",
+                    "type": "string"
+                },
+                "proofImageId": {
                     "type": "string"
                 },
                 "status": {

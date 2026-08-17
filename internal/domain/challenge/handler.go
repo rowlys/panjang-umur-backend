@@ -30,6 +30,21 @@ type CreateChallengeRequest struct {
 	ExpiresAt   *time.Time  `json:"expiresAt"`
 }
 
+type SubmitChallengeRequest struct {
+	ProofImageID *uuid.UUID `json:"proofImageId,omitempty"`
+}
+
+type GetSubmissionsResponse struct {
+	ID          uuid.UUID        `json:"id"`
+	ChallengeID uuid.UUID        `json:"challengeId"`
+	UserID      uuid.UUID        `json:"userId"`
+	ProofURL *string        `json:"ProofURL,omitempty"`
+	PeriodStart time.Time        `json:"periodStart"`
+	Status      int `json:"status"`
+	SubmittedAt time.Time        `gorm:"not null" json:"submittedAt"`
+	ApprovedAt  *time.Time       `json:"approvedAt"`
+}
+
 func NewHandler(service Service) *Handler {
 	return &Handler{service: service}
 }
@@ -46,6 +61,8 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 	rg.PATCH("/:challengeId/cancel", h.Cancel)
 	rg.PATCH("/submissions/:submissionId/approve", h.Approve)
 	rg.DELETE("/:challengeId", h.Delete)
+
+	rg.GET("/proof-upload-url", h.GenerateProofUploadURL)
 }
 
 // Create godoc
@@ -132,6 +149,7 @@ func (h *Handler) Delete(c *gin.Context) {
 // @Produce      json
 // @Security     BearerAuth
 // @Param        challengeId  path      string  true  "Challenge ID (UUID)"
+// @Param        body         body      SubmitChallengeRequest true  "Optional proof image"
 // @Success      200          {object}  models.Challenge
 // @Failure      400          {object}  map[string]string
 // @Failure      403          {object}  map[string]string
@@ -149,7 +167,13 @@ func (h *Handler) Submit(c *gin.Context) {
 		return
 	}
 
-	challenge, err := h.service.Submit(c.Request.Context(), id, userID)
+	var req SubmitChallengeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	challenge, err := h.service.Submit(c.Request.Context(), id, userID, req.ProofImageID)
 	if err != nil {
 		code, msg := httputil.ResolveServiceError(err)
 		c.JSON(code, gin.H{"error": msg})
@@ -311,7 +335,21 @@ func (h *Handler) GetSubmissions(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, submissions)
+	var response []GetSubmissionsResponse
+	for _, submission := range submissions {
+		response = append(response, GetSubmissionsResponse{
+			ID:          submission.ID,
+			ChallengeID: submission.ChallengeID,
+			UserID:      submission.UserID,
+			ProofURL:    h.service.GetProofURL(submission.ProofImageID),
+			PeriodStart: submission.PeriodStart,
+			Status:      int(submission.Status),
+			SubmittedAt: submission.SubmittedAt,
+			ApprovedAt:  submission.ApprovedAt,
+		})
+	}
+
+	c.JSON(http.StatusOK, response)
 }
 
 // GetByAssignee godoc
@@ -360,4 +398,26 @@ func (h *Handler) GetByCreator(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, challenges)
+}
+
+// GenerateProofUploadURL godoc
+// @Summary      Generate a presigned URL for uploading a proof image to S3
+// @Tags         Challenges
+// @Produce      json
+// @Security     BearerAuth
+// @Success      200  {object}  map[string]string
+// @Failure      500  {object}  map[string]string
+// @Router       /challenges/proof-upload-url [get]
+func (h *Handler) GenerateProofUploadURL(c *gin.Context) {
+	uploadURL, imageID, err := h.service.GenerateProofUploadURL(c.Request.Context())
+	if err != nil {
+		code, msg := httputil.ResolveServiceError(err)
+		c.JSON(code, gin.H{"error": msg})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"uploadURL": uploadURL,
+		"imageID":   imageID,
+	})
 }

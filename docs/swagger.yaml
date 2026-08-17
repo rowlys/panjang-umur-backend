@@ -24,6 +24,11 @@ definitions:
     - points
     - title
     type: object
+  challenge.SubmitChallengeRequest:
+    properties:
+      proofImageId:
+        type: string
+    type: object
   friendship.SendRequestRequest:
     properties:
       addresseeId:
@@ -79,10 +84,8 @@ definitions:
       id:
         type: string
       periodStart:
-        description: |-
-          PeriodStart carries forward the same zero-value-sentinel convention as the old
-          ChallengeAssignment (see currentPeriodStart in service.go) so Bounty submissions,
-          which have no recurrence, still get a stable uniqueness key.
+        type: string
+      proofImageId:
         type: string
       status:
         $ref: '#/definitions/models.SubmissionStatus'
@@ -551,6 +554,12 @@ paths:
         name: challengeId
         required: true
         type: string
+      - description: Optional proof image
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/challenge.SubmitChallengeRequest'
       produces:
       - application/json
       responses:
@@ -696,6 +705,28 @@ paths:
       security:
       - BearerAuth: []
       summary: Get challenges created by the current user
+      tags:
+      - Challenges
+  /challenges/proof-upload-url:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Generate a presigned URL for uploading a proof image to S3
       tags:
       - Challenges
   /challenges/submissions/{submissionId}/approve:

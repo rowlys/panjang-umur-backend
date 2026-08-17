@@ -18,6 +18,7 @@ type Service interface {
 	GeneratePresignedURL(ctx context.Context, key string, expiry time.Duration) (string, error)
 	PromoteFile(ctx context.Context, sourceKey, destinationKey string) error
 	DeleteFile(ctx context.Context, key string) error
+	GetPublicURL(key string) string
 }
 
 type service struct {

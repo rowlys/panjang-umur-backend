@@ -26,6 +26,7 @@ import (
 	"github.com/rowlys/panjang-umur-backend/internal/domain/reward"
 	"github.com/rowlys/panjang-umur-backend/internal/domain/transaction"
 	"github.com/rowlys/panjang-umur-backend/internal/domain/user"
+	"github.com/rowlys/panjang-umur-backend/internal/pkg/image_storage"
 	"github.com/rowlys/panjang-umur-backend/internal/middlewares"
 
 	_ "github.com/rowlys/panjang-umur-backend/docs"
@@ -45,6 +46,11 @@ func main() {
 		return
 	}
 
+	// External services
+	imageStorageService := image_storage.NewService()
+
+	// Internal services and handlers
+
 	userRepo := user.NewRepository(database.DB)
 	userService := user.NewService(userRepo)
 	userHandler := user.NewHandler(userService)
@@ -58,7 +64,7 @@ func main() {
 	friendshipHandler := friendship.NewHandler(friendshipService)
 	
 	challengeRepo := challenge.NewRepository(database.DB)
-	challengeService := challenge.NewService(challengeRepo, friendshipService, transactionService)
+	challengeService := challenge.NewService(challengeRepo, friendshipService, transactionService, imageStorageService)
 	challengeHandler := challenge.NewHandler(challengeService)
 	
 	rewardRepo := reward.NewRepository(database.DB)

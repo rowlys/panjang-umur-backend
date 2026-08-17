@@ -5,10 +5,12 @@ import (
 	"errors"
 	"net/http"
 	"time"
+	"fmt"
 
 	"github.com/google/uuid"
 	"github.com/rowlys/panjang-umur-backend/internal/httputil"
 	"github.com/rowlys/panjang-umur-backend/internal/models"
+	"github.com/rowlys/panjang-umur-backend/internal/pkg/image_storage"
 	"gorm.io/gorm"
 )
 
@@ -34,7 +36,7 @@ type TransactionService interface {
 type Service interface {
 	Create(ctx context.Context, input CreateChallengeInput) (*models.Challenge, error)
 	Delete(ctx context.Context, challengeID uuid.UUID, userID uuid.UUID) error
-	Submit(ctx context.Context, challengeID uuid.UUID, userID uuid.UUID) (*models.Challenge, error)
+	Submit(ctx context.Context, challengeID uuid.UUID, userID uuid.UUID, proofImageID *uuid.UUID) (*models.Challenge, error)
 	Approve(ctx context.Context, submissionID uuid.UUID, callerID uuid.UUID) (*models.ChallengeSubmission, error)
 	Cancel(ctx context.Context, challengeID uuid.UUID, callerID uuid.UUID) (*models.Challenge, error)
 	GetAll(callerID uuid.UUID, statuses []models.ChallengeStatus) ([]models.Challenge, error)
@@ -42,21 +44,22 @@ type Service interface {
 	GetByAssignee(userID uuid.UUID) ([]models.Challenge, error)
 	GetByCreator(userID uuid.UUID, statuses []models.ChallengeStatus) ([]models.Challenge, error)
 	GetSubmissions(callerID uuid.UUID, challengeID uuid.UUID) ([]models.ChallengeSubmission, error)
+
+	GenerateProofUploadURL(ctx context.Context) (string, uuid.UUID, error)
+	GetProofURL(imageID *uuid.UUID) *string
 }
 
 type service struct {
 	repo               Repository
 	friendService      FriendService
 	transactionService TransactionService
+	imageStorage 	   image_storage.Service
 }
 
-func NewService(repo Repository, friendService FriendService, transactionService TransactionService) Service {
-	return &service{repo: repo, friendService: friendService, transactionService: transactionService}
+func NewService(repo Repository, friendService FriendService, transactionService TransactionService, imageStorage image_storage.Service) Service {
+	return &service{repo: repo, friendService: friendService, transactionService: transactionService, imageStorage: imageStorage}
 }
 
-// currentPeriodStart identifies which recurrence period "at" falls into for a given challenge
-// type, calendar-aligned in UTC (Daily -> midnight, Weekly -> Monday midnight, ISO week).
-// Bounty challenges have no periods, so they always map to the zero-value sentinel.
 func currentPeriodStart(t models.ChallengeType, at time.Time, resetDay int) time.Time {
 	at = at.UTC()
 	switch t {
@@ -142,7 +145,7 @@ func (s *service) Delete(ctx context.Context, challengeID uuid.UUID, userID uuid
 	return nil
 }
 
-func (s *service) Submit(ctx context.Context, challengeID uuid.UUID, userID uuid.UUID) (*models.Challenge, error) {
+func (s *service) Submit(ctx context.Context, challengeID uuid.UUID, userID uuid.UUID, proofImageID *uuid.UUID) (*models.Challenge, error) {
 	challenge, err := s.repo.FindByID(challengeID)
 	if err != nil {
 		return nil, &httputil.ServiceError{Code: http.StatusNotFound, Message: "Challenge not found"}
@@ -182,10 +185,21 @@ func (s *service) Submit(ctx context.Context, challengeID uuid.UUID, userID uuid
 			}
 		}
 
+		if proofImageID != nil && *proofImageID != uuid.Nil {
+			tmpKey := fmt.Sprintf("tmp/%s", proofImageID.String())
+			destKey := fmt.Sprintf("submissions/%s", proofImageID.String())
+
+			err := s.imageStorage.PromoteFile(ctx, tmpKey, destKey)
+			if err != nil {
+				return nil, &httputil.ServiceError{Code: http.StatusInternalServerError, Message: "Failed to promote proof image"}
+			}
+		}
+
 		submission := &models.ChallengeSubmission{
 			ID:          uuid.New(),
 			ChallengeID: challengeID,
 			UserID:      userID,
+			ProofImageID: proofImageID,	
 			PeriodStart: period,
 			Status:      models.SubmissionSubmitted,
 			SubmittedAt: time.Now(),
@@ -238,9 +252,6 @@ func (s *service) Approve(ctx context.Context, submissionID uuid.UUID, callerID 
 			return err
 		}
 
-		// Bounty challenges complete once every assignee has been approved. Only
-		// meaningful for restricted challenges, which have a fixed assignee set to
-		// check against — open Bounty challenges have no bounded set to close over.
 		if challenge.Type == models.Bounty && challenge.Restricted {
 			missingCount, err := s.repo.CountAssigneesWithoutApprovedSubmission(tx, challenge.ID)
 			if err != nil {
@@ -314,10 +325,6 @@ func (s *service) GetByID(callerID uuid.UUID, id uuid.UUID) (*models.Challenge, 
 	return nil, &httputil.ServiceError{Code: http.StatusForbidden, Message: "You do not have access to this challenge"}
 }
 
-// GetByAssignee returns Active challenges the user is involved in (either as a restricted
-// assignee or via a past submission) that are still open for the current recurrence period —
-// i.e. not yet approved for that period. There is no background job resetting anything: the
-// period is recomputed on every call, so a challenge naturally reappears once its period rolls over.
 func (s *service) GetByAssignee(userID uuid.UUID) ([]models.Challenge, error) {
 	candidates, err := s.repo.FindChallengesInvolvingUser(userID)
 	if err != nil {
@@ -362,8 +369,39 @@ func (s *service) GetByCreator(userID uuid.UUID, statuses []models.ChallengeStat
 }
 
 func (s *service) GetSubmissions(callerID uuid.UUID, challengeID uuid.UUID) ([]models.ChallengeSubmission, error) {
-	if _, err := s.GetByID(callerID, challengeID); err != nil {
+	challenge, err := s.GetByID(callerID, challengeID)
+	if err != nil {
 		return nil, err
 	}
+
+	if challenge.CreatorID != callerID {
+		return nil, &httputil.ServiceError{Code: http.StatusForbidden, Message: "You do not have access to this challenge's submissions"}
+	}
+
 	return s.repo.FindSubmissionsByChallenge(challengeID)
+}
+
+func (s *service) GenerateProofUploadURL(ctx context.Context) (string, uuid.UUID, error) {
+	imageID := uuid.New()
+	tmpKey := fmt.Sprintf("tmp/%s", imageID.String())
+
+	url, err := s.imageStorage.GeneratePresignedURL(ctx, tmpKey, 15*time.Minute)
+
+
+	if err != nil {
+		return "", uuid.Nil, &httputil.ServiceError{Code: http.StatusInternalServerError, Message: "Failed to generate presigned URL"}
+	}
+
+	return url, imageID, nil
+}
+
+func (s *service) GetProofURL(imageID *uuid.UUID) *string {
+    if imageID == nil || *imageID == uuid.Nil {
+        return nil
+    }
+    
+    key := fmt.Sprintf("submissions/%s", imageID.String())
+    
+    url := s.imageStorage.GetPublicURL(key)
+    return &url
 }
