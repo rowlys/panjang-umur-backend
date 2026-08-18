@@ -17,9 +17,15 @@ import (
 	"github.com/rowlys/panjang-umur-backend/internal/models"
 )
 
+type UserDTO struct {
+	ID       uuid.UUID `json:"id"`
+	Username string    `json:"username"`
+	Name     string    `json:"name"`
+}
+
 type LoginResponse struct {
-	UserID uuid.UUID 
-	Token string 
+	User  UserDTO `json:"user"`
+	Token string  `json:"token"`
 }
 
 type Service interface {
@@ -90,9 +96,15 @@ func (s *service) Login(ctx context.Context, input LoginInput) (*LoginResponse, 
 		return nil, &httputil.ServiceError{Code: http.StatusInternalServerError, Message: "Failed to generate token"}
 	}
 
+	userDTO := UserDTO{
+		ID:       user.ID,
+		Username: user.Username,
+		Name:     user.Name,
+	}
+
 	loginResponse := LoginResponse{
-		UserID: user.ID,
-		Token:   tokenString,
+		User:  userDTO,
+		Token: tokenString,
 	}
 
 	return &loginResponse, nil

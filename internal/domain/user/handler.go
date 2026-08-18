@@ -39,8 +39,6 @@ func (h *Handler) RegisterProtectedRoutes(rg *gin.RouterGroup) {
 	rg.GET("/:userId", h.GetByID)
 }
 
-
-
 // Register godoc
 // @Summary      Register a new user
 // @Tags         Auth
@@ -68,8 +66,6 @@ func (h *Handler) Register(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{"message": "User created successfully", "userId": user.ID})
 }
 
-
-
 // Login godoc
 // @Summary      Login
 // @Tags         Auth
@@ -94,9 +90,8 @@ func (h *Handler) Login(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"userId": loginResp.UserID, "token": loginResp.Token})
+	c.JSON(http.StatusOK, loginResp)
 }
-
 
 // GetMe godoc
 // @Summary      Get the authenticated user's profile
@@ -149,7 +144,6 @@ func (h *Handler) GetByID(c *gin.Context) {
 	c.JSON(http.StatusOK, user)
 }
 
-
 // GetByUsername godoc
 // @Summary      Get user by username
 // @Tags         Users
@@ -176,6 +170,3 @@ func (h *Handler) GetByUsername(c *gin.Context) {
 
 	c.JSON(http.StatusOK, user)
 }
-
-
-
