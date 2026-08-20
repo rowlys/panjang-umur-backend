@@ -51,7 +51,7 @@ func (h *Handler) RegisterProtectedRoutes(rg *gin.RouterGroup) {
 	rg.GET("/username/:username", h.GetByUsername)
 	rg.GET("/:userId", h.GetByID)
 
-	rg.GET("/search/:prefix", h.SearchByUsername)
+	rg.GET("/search", h.SearchByUsername)
 }
 
 // Register godoc
@@ -203,7 +203,11 @@ func (h *Handler) SearchByUsername(c *gin.Context) {
 		return
 	}
 
-	prefix := c.Param("prefix")
+	prefix, ok := c.GetQuery("prefix")
+	if !ok || prefix == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Prefix query parameter is required"})
+		return
+	}
 	
 	limitStr := c.DefaultQuery("limit", "10")
     limit, err := strconv.Atoi(limitStr)
