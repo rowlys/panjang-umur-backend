@@ -6,6 +6,12 @@ import (
 	"gorm.io/gorm"
 )
 
+type FriendDTO struct {
+	ID       uuid.UUID `json:"id"`
+	Username string    `json:"username"`
+	Name     string    `json:"name"`
+}
+
 type Repository interface {
 	Create(f *models.Friendship) error
 	FindByID(id uuid.UUID) (*models.Friendship, error)
@@ -13,7 +19,7 @@ type Repository interface {
 	UpdateStatus(id uuid.UUID, status models.FriendshipStatus) error
 	Delete(id uuid.UUID) error
 	AreFriends(userA, userB uuid.UUID) (bool, error)
-	ListFriends(userID uuid.UUID) ([]models.User, error)
+	ListFriends(userID uuid.UUID) ([]FriendDTO, error)
 	ListIncoming(userID uuid.UUID) ([]models.Friendship, error)
 	ListOutgoing(userID uuid.UUID) ([]models.Friendship, error)
 	GetBulkStatuses(callerID uuid.UUID, otherIDs []uuid.UUID) (map[uuid.UUID]int, error)
@@ -66,20 +72,24 @@ func (r *repository) AreFriends(userA, userB uuid.UUID) (bool, error) {
 	return count > 0, err
 }
 
-func (r *repository) ListFriends(userID uuid.UUID) ([]models.User, error) {
-	var users []models.User
+func (r *repository) ListFriends(userID uuid.UUID) ([]FriendDTO, error) {
+	var users []FriendDTO
 
     q1 := r.db.Model(&models.User{}).
+		Select("users.id, users.username, users.name").
         Joins("INNER JOIN friendships ON friendships.addressee_id = users.id").
         Where("friendships.requester_id = ?", userID).
         Where("friendships.status = ?", models.FriendshipAccepted)
 
     q2 := r.db.Model(&models.User{}).
+		Select("users.id, users.username, users.name").
         Joins("INNER JOIN friendships ON friendships.requester_id = users.id").
         Where("friendships.addressee_id = ?", userID).
         Where("friendships.status = ?", models.FriendshipAccepted)
 
     err := r.db.Raw("? UNION ?", q1, q2).Scan(&users).Error
+
+
 
     return users, err
 }

@@ -16,7 +16,7 @@ type Service interface {
 	Accept(ctx context.Context, requestID, callerID uuid.UUID) (*models.Friendship, error)
 	Decline(ctx context.Context, requestID, callerID uuid.UUID) error
 	Unfriend(ctx context.Context, callerID, otherID uuid.UUID) error
-	ListFriends(userID uuid.UUID) ([]models.User, error)
+	ListFriends(userID uuid.UUID) ([]FriendDTO, error)
 	ListIncoming(userID uuid.UUID) ([]models.Friendship, error)
 	ListOutgoing(userID uuid.UUID) ([]models.Friendship, error)
 	IsFriend(userA, userB uuid.UUID) (bool, error)
@@ -112,7 +112,7 @@ func (s *service) Unfriend(ctx context.Context, callerID, otherID uuid.UUID) err
 	return nil
 }
 
-func (s *service) ListFriends(userID uuid.UUID) ([]models.User, error) {
+func (s *service) ListFriends(userID uuid.UUID) ([]FriendDTO, error) {
 	return s.repo.ListFriends(userID)
 }
 
