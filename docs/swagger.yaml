@@ -331,6 +331,18 @@ definitions:
     - password
     - username
     type: object
+  user.UserSearchDTO:
+    properties:
+      id:
+        type: string
+      name:
+        type: string
+      status:
+        description: Friendship status with the caller
+        type: integer
+      username:
+        type: string
+    type: object
 info:
   contact: {}
   description: A health and longevity challenge API
@@ -1498,6 +1510,39 @@ paths:
       security:
       - BearerAuth: []
       summary: Get the authenticated user's profile
+      tags:
+      - Users
+  /users/search/{prefix}:
+    get:
+      parameters:
+      - description: Username prefix
+        in: path
+        name: prefix
+        required: true
+        type: string
+      - default: 10
+        description: Limit the number of results
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/user.UserSearchDTO'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Search users by username prefix
       tags:
       - Users
   /users/username/{username}:

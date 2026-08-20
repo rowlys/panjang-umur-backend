@@ -2,6 +2,7 @@ package user
 
 import (
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -19,12 +20,24 @@ type LoginInput struct {
 	Password string `json:"password" binding:"required"`
 }
 
-type Handler struct {
-	service Service
+type UserSearchDTO struct {
+	ID       uuid.UUID `json:"id"`
+	Username string    `json:"username"`
+	Name     string    `json:"name"`
+	Status   int       `json:"status"` // Friendship status with the caller
 }
 
-func NewHandler(service Service) *Handler {
-	return &Handler{service: service}
+type FriendshipService interface {
+	GetBulkStatuses(callerID uuid.UUID, otherIDs []uuid.UUID) (map[uuid.UUID]int, error)
+}
+
+type Handler struct {
+	service Service
+	friends FriendshipService
+}
+
+func NewHandler(service Service, friends FriendshipService) *Handler {
+	return &Handler{service: service, friends: friends}
 }
 
 func (h *Handler) RegisterAuthRoutes(rg *gin.RouterGroup) {
@@ -37,6 +50,8 @@ func (h *Handler) RegisterProtectedRoutes(rg *gin.RouterGroup) {
 	rg.GET("/me", h.GetMe)
 	rg.GET("/username/:username", h.GetByUsername)
 	rg.GET("/:userId", h.GetByID)
+
+	rg.GET("/search/:prefix", h.SearchByUsername)
 }
 
 // Register godoc
@@ -169,4 +184,77 @@ func (h *Handler) GetByUsername(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, user)
+}
+
+
+// SearchByUsername godoc
+// @Summary      Search users by username prefix
+// @Tags         Users
+// @Produce      json
+// @Security     BearerAuth
+// @Param        prefix path string true "Username prefix"
+// @Param        limit query int false "Limit the number of results" default(10)
+// @Success      200  {array}   UserSearchDTO
+// @Failure      400  {object}  map[string]string
+// @Router	   /users/search/{prefix} [get]
+func (h *Handler) SearchByUsername(c *gin.Context) {
+	userID, ok := httputil.ParseUserID(c)
+	if !ok {
+		return
+	}
+
+	prefix := c.Param("prefix")
+	
+	limitStr := c.DefaultQuery("limit", "10")
+    limit, err := strconv.Atoi(limitStr)
+    if err != nil || limit <= 0 {
+        limit = 10
+    }
+
+	users, err := h.service.SearchByUsername(userID, prefix, limit)
+	if err != nil {
+		code, msg := httputil.ResolveServiceError(err)
+		c.JSON(code, gin.H{"error": msg})
+		return
+	}
+
+	var otherIDs []uuid.UUID
+	for _, user := range users {
+		if user.ID != userID {
+			otherIDs = append(otherIDs, user.ID)
+		}
+	}
+
+	statusMap, err := h.friends.GetBulkStatuses(userID, otherIDs)
+	if err != nil {
+		code, msg := httputil.ResolveServiceError(err)
+		c.JSON(code, gin.H{"error": msg})
+		return
+	}
+
+	var response []UserSearchDTO
+	for _, user := range users {
+		if user.ID == userID {
+			continue
+		}
+
+		status, exists := statusMap[user.ID]
+		if !exists {
+			status = 2 // No relationship
+		}
+
+		response = append(response, UserSearchDTO{
+			ID:       user.ID,
+			Username: user.Username,
+			Name:     user.Name,
+			Status:   status,
+		})
+	}
+
+	if response == nil {
+		response = []UserSearchDTO{}
+	}
+
+	c.JSON(http.StatusOK, response)
+
 }

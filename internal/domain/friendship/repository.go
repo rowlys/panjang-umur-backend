@@ -16,6 +16,7 @@ type Repository interface {
 	ListFriends(userID uuid.UUID) ([]models.User, error)
 	ListIncoming(userID uuid.UUID) ([]models.Friendship, error)
 	ListOutgoing(userID uuid.UUID) ([]models.Friendship, error)
+	GetBulkStatuses(callerID uuid.UUID, otherIDs []uuid.UUID) (map[uuid.UUID]int, error)
 }
 
 type repository struct {
@@ -93,4 +94,37 @@ func (r *repository) ListOutgoing(userID uuid.UUID) ([]models.Friendship, error)
 	var requests []models.Friendship
 	err := r.db.Where("requester_id = ? AND status = ?", userID, models.FriendshipPending).Find(&requests).Error
 	return requests, err
+}
+
+func (r *repository) GetBulkStatuses(callerID uuid.UUID, otherIDs []uuid.UUID) (map[uuid.UUID]int, error) {
+	if len(otherIDs) == 0 {
+		return make(map[uuid.UUID]int), nil
+	}
+
+	var records []struct {
+		RequesterID uuid.UUID
+		AddresseeID uuid.UUID
+		Status  int
+	}
+	
+
+	err := r.db.Table("friendships").
+		Where("(requester_id = ? AND addressee_id IN ?) OR (requester_id IN ? AND addressee_id = ?)", callerID, otherIDs, otherIDs, callerID).
+		Find(&records).Error
+	
+	if err != nil {
+		return nil, err
+	}
+
+	statusMap := make(map[uuid.UUID]int)
+	for _, record := range records {
+		if record.RequesterID == callerID {
+			statusMap[record.AddresseeID] = record.Status
+		} else {
+			statusMap[record.RequesterID] = record.Status
+		}
+
+	}
+
+	return statusMap, nil
 }

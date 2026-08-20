@@ -1805,6 +1805,58 @@ const docTemplate = `{
                 }
             }
         },
+        "/users/search/{prefix}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Users"
+                ],
+                "summary": "Search users by username prefix",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Username prefix",
+                        "name": "prefix",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "default": 10,
+                        "description": "Limit the number of results",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/user.UserSearchDTO"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/users/username/{username}": {
             "get": {
                 "security": [
@@ -2391,6 +2443,24 @@ const docTemplate = `{
                 "password": {
                     "type": "string",
                     "minLength": 6
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "user.UserSearchDTO": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "status": {
+                    "description": "Friendship status with the caller",
+                    "type": "integer"
                 },
                 "username": {
                     "type": "string"

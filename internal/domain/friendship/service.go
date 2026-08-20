@@ -20,6 +20,8 @@ type Service interface {
 	ListIncoming(userID uuid.UUID) ([]models.Friendship, error)
 	ListOutgoing(userID uuid.UUID) ([]models.Friendship, error)
 	IsFriend(userA, userB uuid.UUID) (bool, error)
+
+	GetBulkStatuses(callerID uuid.UUID, otherIDs []uuid.UUID) (map[uuid.UUID]int, error)
 }
 
 type service struct {
@@ -124,4 +126,8 @@ func (s *service) ListOutgoing(userID uuid.UUID) ([]models.Friendship, error) {
 
 func (s *service) IsFriend(userA, userB uuid.UUID) (bool, error) {
 	return s.repo.AreFriends(userA, userB)
+}
+
+func (s *service) GetBulkStatuses(callerID uuid.UUID, otherIDs []uuid.UUID) (map[uuid.UUID]int, error) {
+	return s.repo.GetBulkStatuses(callerID, otherIDs)
 }

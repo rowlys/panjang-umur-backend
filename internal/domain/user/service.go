@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"time"
+	"gorm.io/gorm"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
@@ -24,7 +25,7 @@ type UserDTO struct {
 }
 
 type LoginResponse struct {
-	User  UserDTO `json:"user"`
+	User  BareUserDTO `json:"user"`
 	Token string  `json:"token"`
 }
 
@@ -34,6 +35,7 @@ type Service interface {
 	GetByID(id uuid.UUID) (*models.User, error)
 	GetByUsername(username string) (*models.User, error)
 	GetByIDs(ids []uuid.UUID) ([]*models.User, error)
+	SearchByUsername(callerId uuid.UUID, prefix string, limit int) ([]BareUserDTO, error)
 }
 
 type service struct {
@@ -96,7 +98,7 @@ func (s *service) Login(ctx context.Context, input LoginInput) (*LoginResponse, 
 		return nil, &httputil.ServiceError{Code: http.StatusInternalServerError, Message: "Failed to generate token"}
 	}
 
-	userDTO := UserDTO{
+	userDTO := BareUserDTO{
 		ID:       user.ID,
 		Username: user.Username,
 		Name:     user.Name,
@@ -111,13 +113,35 @@ func (s *service) Login(ctx context.Context, input LoginInput) (*LoginResponse, 
 }
 
 func (s *service) GetByID(id uuid.UUID) (*models.User, error) {
-	return s.repo.FindByID(id)
+	user, err := s.repo.FindByID(id)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, &httputil.ServiceError{Code: http.StatusNotFound, Message: "User not found"}
+		}
+		return nil, &httputil.ServiceError{Code: http.StatusInternalServerError, Message: "Failed to retrieve user"}
+	}
+	return user, nil
 }
 
 func (s *service) GetByUsername(username string) (*models.User, error) {
-	return s.repo.FindByUsername(username)
+	user, err := s.repo.FindByUsername(username)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, &httputil.ServiceError{Code: http.StatusNotFound, Message: "User not found"}
+		}
+		return nil, &httputil.ServiceError{Code: http.StatusInternalServerError, Message: "Failed to retrieve user"}
+	}
+	return user, nil
 }
 
 func (s *service) GetByIDs(ids []uuid.UUID) ([]*models.User, error) {
-	return s.repo.FindByIDs(ids)
+	users, err := s.repo.FindByIDs(ids)
+	if err != nil {
+		return nil, &httputil.ServiceError{Code: http.StatusInternalServerError, Message: "Failed to retrieve users"}
+	}
+	return users, nil
+}
+
+func (s *service) SearchByUsername(callerId uuid.UUID, prefix string, limit int) ([]BareUserDTO, error) {
+	return s.repo.SearchByUsername(callerId, prefix, limit)
 }

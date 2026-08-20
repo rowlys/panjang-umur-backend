@@ -49,31 +49,32 @@ func main() {
 	// External services
 	imageStorageService := image_storage.NewService()
 
-	// Internal services and handlers
-
+	// Internal repositories and services 
 	userRepo := user.NewRepository(database.DB)
 	userService := user.NewService(userRepo)
-	userHandler := user.NewHandler(userService)
 
 	transactionRepo := transaction.NewRepository(database.DB)
 	transactionService := transaction.NewService(transactionRepo)
-	transactionHandler := transaction.NewHandler(transactionService)
 
 	friendshipRepo := friendship.NewRepository(database.DB)
 	friendshipService := friendship.NewService(friendshipRepo)
-	friendshipHandler := friendship.NewHandler(friendshipService)
 	
 	challengeRepo := challenge.NewRepository(database.DB)
 	challengeService := challenge.NewService(challengeRepo, friendshipService, transactionService, imageStorageService)
-	challengeHandler := challenge.NewHandler(challengeService)
 	
 	rewardRepo := reward.NewRepository(database.DB)
 	rewardService := reward.NewService(rewardRepo, userService, friendshipService, transactionService)
-	rewardHandler := reward.NewHandler(rewardService)
 	
 	chatHub := chat.NewHub()
 	chatRepo := chat.NewRepository(database.DB)
 	chatService := chat.NewService(chatRepo, friendshipService, chatHub)
+
+	// Handlers
+	userHandler := user.NewHandler(userService, friendshipService)
+	transactionHandler := transaction.NewHandler(transactionService)
+	friendshipHandler := friendship.NewHandler(friendshipService)
+	challengeHandler := challenge.NewHandler(challengeService)
+	rewardHandler := reward.NewHandler(rewardService)
 	chatHandler := chat.NewHandler(chatService, chatHub)
 	
 	router := gin.Default()
