@@ -192,11 +192,11 @@ func (h *Handler) GetByUsername(c *gin.Context) {
 // @Tags         Users
 // @Produce      json
 // @Security     BearerAuth
-// @Param        prefix path string true "Username prefix"
-// @Param        limit query int false "Limit the number of results" default(10)
+// @Param        prefix  query     string  true  "Username prefix"
+// @Param        limit   query     int     false "Limit the number of results (default is 10)"
 // @Success      200  {array}   UserSearchDTO
 // @Failure      400  {object}  map[string]string
-// @Router	   /users/search/{prefix} [get]
+// @Router	   /users/search [get]
 func (h *Handler) SearchByUsername(c *gin.Context) {
 	userID, ok := httputil.ParseUserID(c)
 	if !ok {

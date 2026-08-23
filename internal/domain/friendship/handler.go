@@ -12,10 +12,6 @@ type Handler struct {
 	service Service
 }
 
-type SendRequestRequest struct {
-	AddresseeID uuid.UUID `json:"addresseeId" binding:"required"`
-}
-
 func NewHandler(service Service) *Handler {
 	return &Handler{service: service}
 }
@@ -35,24 +31,30 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 // @Accept       json
 // @Produce      json
 // @Security     BearerAuth
-// @Param        body  body      SendRequestRequest  true  "Addressee"
+// @Param        userId  query     string  true  "Addressee's user ID (UUID)"
 // @Success      201   {object}  models.Friendship
 // @Failure      400   {object}  map[string]string
 // @Failure      409   {object}  map[string]string
 // @Router       /friends/requests [post]
 func (h *Handler) SendRequest(c *gin.Context) {
-	var input SendRequestRequest
-	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
 	callerID, ok := httputil.ParseUserID(c)
 	if !ok {
 		return
 	}
 
-	f, err := h.service.SendRequest(c.Request.Context(), callerID, input.AddresseeID)
+	userID, ok := c.GetQuery("userId")
+	if !ok || userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "userId query parameter is required"})
+		return
+	}
+
+	userIDParsed, err := uuid.Parse(userID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid userId format"})
+		return
+	}
+
+	f, err := h.service.SendRequest(c.Request.Context(), callerID, userIDParsed)
 	if err != nil {
 		code, msg := httputil.ResolveServiceError(err)
 		c.JSON(code, gin.H{"error": msg})
