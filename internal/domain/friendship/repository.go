@@ -12,6 +12,33 @@ type FriendDTO struct {
 	Name     string    `json:"name"`
 }
 
+type FriendshipRequestWithUserInfo struct {
+	ID          uuid.UUID
+	Status      int      
+	CreatedAt   string   
+	RespondedAt string   
+
+	OtherID   uuid.UUID
+	OtherName string   
+	OtherUsername string
+}
+
+type IncomingRequestWithUserDTO struct {
+	ID          uuid.UUID `json:"id"`
+	Requester   FriendDTO `json:"requester"`
+	Status      int       `json:"status"`
+	CreatedAt   string    `json:"created_at"`
+	RespondedAt string    `json:"responded_at,omitempty"`
+}
+
+type OutgoingRequestWithUserDTO struct {
+	ID          uuid.UUID `json:"id"`
+	Addressee   FriendDTO `json:"addressee"`
+	Status      int       `json:"status"`
+	CreatedAt   string    `json:"created_at"`
+	RespondedAt string    `json:"responded_at,omitempty"`
+}
+
 type Repository interface {
 	Create(f *models.Friendship) error
 	FindByID(id uuid.UUID) (*models.Friendship, error)
@@ -20,8 +47,8 @@ type Repository interface {
 	Delete(id uuid.UUID) error
 	AreFriends(userA, userB uuid.UUID) (bool, error)
 	ListFriends(userID uuid.UUID) ([]FriendDTO, error)
-	ListIncoming(userID uuid.UUID) ([]models.Friendship, error)
-	ListOutgoing(userID uuid.UUID) ([]models.Friendship, error)
+	ListIncoming(userID uuid.UUID) ([]IncomingRequestWithUserDTO, error)
+	ListOutgoing(userID uuid.UUID) ([]OutgoingRequestWithUserDTO, error)
 	GetBulkStatuses(callerID uuid.UUID, otherIDs []uuid.UUID) (map[uuid.UUID]int, error)
 }
 
@@ -94,16 +121,64 @@ func (r *repository) ListFriends(userID uuid.UUID) ([]FriendDTO, error) {
     return users, err
 }
 
-func (r *repository) ListIncoming(userID uuid.UUID) ([]models.Friendship, error) {
-	var requests []models.Friendship
-	err := r.db.Where("addressee_id = ? AND status = ?", userID, models.FriendshipPending).Find(&requests).Error
-	return requests, err
+func (r *repository) ListIncoming(userID uuid.UUID) ([]IncomingRequestWithUserDTO, error) {
+	var rows []FriendshipRequestWithUserInfo
+	err := r.db.Table("friendships").
+		Select("friendships.id, friendships.status, friendships.created_at, friendships.responded_at, friendships.requester_id as other_id, requester.username as other_username, requester.name as other_name, friendships.addressee_id").
+		Joins("JOIN users as requester ON friendships.requester_id = requester.id").
+		Where("friendships.addressee_id = ? AND friendships.status = ?", userID, models.FriendshipPending).
+		Scan(&rows).Error
+
+	if err != nil {
+		return nil, err
+	}
+
+	dtos := make([]IncomingRequestWithUserDTO, 0, len(rows))
+	for _, row := range rows {
+		dto := IncomingRequestWithUserDTO{
+			ID: row.ID,
+			Requester: FriendDTO{
+				ID:       row.OtherID,
+				Username: row.OtherUsername,
+				Name:     row.OtherName,
+			},
+			Status:      row.Status,
+			CreatedAt:   row.CreatedAt,
+			RespondedAt: row.RespondedAt,
+		}
+		dtos = append(dtos, dto)
+	}
+	return dtos, nil
 }
 
-func (r *repository) ListOutgoing(userID uuid.UUID) ([]models.Friendship, error) {
-	var requests []models.Friendship
-	err := r.db.Where("requester_id = ? AND status = ?", userID, models.FriendshipPending).Find(&requests).Error
-	return requests, err
+func (r *repository) ListOutgoing(userID uuid.UUID) ([]OutgoingRequestWithUserDTO, error) {
+	var rows []FriendshipRequestWithUserInfo
+	err := r.db.Table("friendships").
+		Select("friendships.id, friendships.status, friendships.created_at, friendships.responded_at, friendships.addressee_id as other_id, addressee.username as other_username, addressee.name as other_name, friendships.requester_id").
+		Joins("JOIN users as addressee ON friendships.addressee_id = addressee.id").
+		Where("friendships.requester_id = ? AND friendships.status = ?", userID, models.FriendshipPending).
+		Scan(&rows).Error
+
+	if err != nil {
+		return nil, err
+	}
+
+	dtos := make([]OutgoingRequestWithUserDTO, 0, len(rows))
+	for _, row := range rows {
+		dto := OutgoingRequestWithUserDTO{
+			ID: row.ID,
+			Addressee: FriendDTO{
+				ID:       row.OtherID,
+				Username: row.OtherUsername,
+				Name:     row.OtherName,
+			},
+			Status:      row.Status,
+			CreatedAt:   row.CreatedAt,
+			RespondedAt: row.RespondedAt,
+		}
+		dtos = append(dtos, dto)
+	}
+	return dtos, nil
 }
 
 func (r *repository) GetBulkStatuses(callerID uuid.UUID, otherIDs []uuid.UUID) (map[uuid.UUID]int, error) {

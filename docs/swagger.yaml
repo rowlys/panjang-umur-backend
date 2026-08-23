@@ -29,13 +29,6 @@ definitions:
       proofImageId:
         type: string
     type: object
-  friendship.SendRequestRequest:
-    properties:
-      addresseeId:
-        type: string
-    required:
-    - addresseeId
-    type: object
   models.Challenge:
     properties:
       createdAt:
@@ -925,12 +918,11 @@ paths:
       consumes:
       - application/json
       parameters:
-      - description: Addressee
-        in: body
-        name: body
+      - description: Addressee's user ID (UUID)
+        in: query
+        name: userId
         required: true
-        schema:
-          $ref: '#/definitions/friendship.SendRequestRequest'
+        type: string
       produces:
       - application/json
       responses:
@@ -1512,16 +1504,15 @@ paths:
       summary: Get the authenticated user's profile
       tags:
       - Users
-  /users/search/{prefix}:
+  /users/search:
     get:
       parameters:
       - description: Username prefix
-        in: path
+        in: query
         name: prefix
         required: true
         type: string
-      - default: 10
-        description: Limit the number of results
+      - description: Limit the number of results (default is 10)
         in: query
         name: limit
         type: integer

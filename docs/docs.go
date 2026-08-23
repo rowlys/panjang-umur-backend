@@ -881,13 +881,11 @@ const docTemplate = `{
                 "summary": "Send a friend request",
                 "parameters": [
                     {
-                        "description": "Addressee",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/friendship.SendRequestRequest"
-                        }
+                        "type": "string",
+                        "description": "Addressee's user ID (UUID)",
+                        "name": "userId",
+                        "in": "query",
+                        "required": true
                     }
                 ],
                 "responses": {
@@ -1805,7 +1803,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/users/search/{prefix}": {
+        "/users/search": {
             "get": {
                 "security": [
                     {
@@ -1824,13 +1822,12 @@ const docTemplate = `{
                         "type": "string",
                         "description": "Username prefix",
                         "name": "prefix",
-                        "in": "path",
+                        "in": "query",
                         "required": true
                     },
                     {
                         "type": "integer",
-                        "default": 10,
-                        "description": "Limit the number of results",
+                        "description": "Limit the number of results (default is 10)",
                         "name": "limit",
                         "in": "query"
                     }
@@ -2000,17 +1997,6 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "proofImageId": {
-                    "type": "string"
-                }
-            }
-        },
-        "friendship.SendRequestRequest": {
-            "type": "object",
-            "required": [
-                "addresseeId"
-            ],
-            "properties": {
-                "addresseeId": {
                     "type": "string"
                 }
             }

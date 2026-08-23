@@ -17,8 +17,8 @@ type Service interface {
 	Decline(ctx context.Context, requestID, callerID uuid.UUID) error
 	Unfriend(ctx context.Context, callerID, otherID uuid.UUID) error
 	ListFriends(userID uuid.UUID) ([]FriendDTO, error)
-	ListIncoming(userID uuid.UUID) ([]models.Friendship, error)
-	ListOutgoing(userID uuid.UUID) ([]models.Friendship, error)
+	ListIncoming(userID uuid.UUID) ([]IncomingRequestWithUserDTO, error)
+	ListOutgoing(userID uuid.UUID) ([]OutgoingRequestWithUserDTO, error)
 	IsFriend(userA, userB uuid.UUID) (bool, error)
 
 	GetBulkStatuses(callerID uuid.UUID, otherIDs []uuid.UUID) (map[uuid.UUID]int, error)
@@ -116,11 +116,11 @@ func (s *service) ListFriends(userID uuid.UUID) ([]FriendDTO, error) {
 	return s.repo.ListFriends(userID)
 }
 
-func (s *service) ListIncoming(userID uuid.UUID) ([]models.Friendship, error) {
+func (s *service) ListIncoming(userID uuid.UUID) ([]IncomingRequestWithUserDTO, error) {
 	return s.repo.ListIncoming(userID)
 }
 
-func (s *service) ListOutgoing(userID uuid.UUID) ([]models.Friendship, error) {
+func (s *service) ListOutgoing(userID uuid.UUID) ([]OutgoingRequestWithUserDTO, error) {
 	return s.repo.ListOutgoing(userID)
 }
 
