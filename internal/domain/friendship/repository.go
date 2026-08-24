@@ -100,7 +100,7 @@ func (r *repository) AreFriends(userA, userB uuid.UUID) (bool, error) {
 }
 
 func (r *repository) ListFriends(userID uuid.UUID) ([]FriendDTO, error) {
-	var users []FriendDTO
+	users := []FriendDTO{}
 
     q1 := r.db.Model(&models.User{}).
 		Select("users.id, users.username, users.name").
@@ -115,8 +115,6 @@ func (r *repository) ListFriends(userID uuid.UUID) ([]FriendDTO, error) {
         Where("friendships.status = ?", models.FriendshipAccepted)
 
     err := r.db.Raw("? UNION ?", q1, q2).Scan(&users).Error
-
-
 
     return users, err
 }
