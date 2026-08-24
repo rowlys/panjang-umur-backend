@@ -244,7 +244,9 @@ func (h *Handler) SearchByUsername(c *gin.Context) {
 
 		status, exists := statusMap[user.ID]
 		if !exists {
-			status = 2 // No relationship
+			status = 0 // No relationship
+		} else {
+			status += 1 
 		}
 
 		response = append(response, UserSearchDTO{
