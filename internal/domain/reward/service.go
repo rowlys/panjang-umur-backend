@@ -36,7 +36,7 @@ type RewardClaimHistory struct {
 }
 
 type UserService interface {
-	GetByIDs(userIDs []uuid.UUID) ([]*models.User, error)
+	GetByIDs(userIDs []uuid.UUID) ([]*models.BareUserDTO, error)
 }
 
 type FriendService interface {

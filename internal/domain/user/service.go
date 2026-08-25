@@ -18,14 +18,8 @@ import (
 	"github.com/rowlys/panjang-umur-backend/internal/models"
 )
 
-type UserDTO struct {
-	ID       uuid.UUID `json:"id"`
-	Username string    `json:"username"`
-	Name     string    `json:"name"`
-}
-
 type LoginResponse struct {
-	User  BareUserDTO `json:"user"`
+	User  models.BareUserDTO `json:"user"`
 	Token string  `json:"token"`
 }
 
@@ -34,8 +28,8 @@ type Service interface {
 	Login(ctx context.Context, input LoginInput) (*LoginResponse, error)
 	GetByID(id uuid.UUID) (*models.User, error)
 	GetByUsername(username string) (*models.User, error)
-	GetByIDs(ids []uuid.UUID) ([]*models.User, error)
-	SearchByUsername(callerId uuid.UUID, prefix string, limit int) ([]BareUserDTO, error)
+	GetByIDs(ids []uuid.UUID) ([]*models.BareUserDTO, error)
+	SearchByUsername(callerId uuid.UUID, prefix string, limit int) ([]models.BareUserDTO, error)
 }
 
 type service struct {
@@ -98,7 +92,7 @@ func (s *service) Login(ctx context.Context, input LoginInput) (*LoginResponse, 
 		return nil, &httputil.ServiceError{Code: http.StatusInternalServerError, Message: "Failed to generate token"}
 	}
 
-	userDTO := BareUserDTO{
+	userDTO := models.BareUserDTO{
 		ID:       user.ID,
 		Username: user.Username,
 		Name:     user.Name,
@@ -134,7 +128,7 @@ func (s *service) GetByUsername(username string) (*models.User, error) {
 	return user, nil
 }
 
-func (s *service) GetByIDs(ids []uuid.UUID) ([]*models.User, error) {
+func (s *service) GetByIDs(ids []uuid.UUID) ([]*models.BareUserDTO, error) {
 	users, err := s.repo.FindByIDs(ids)
 	if err != nil {
 		return nil, &httputil.ServiceError{Code: http.StatusInternalServerError, Message: "Failed to retrieve users"}
@@ -142,6 +136,6 @@ func (s *service) GetByIDs(ids []uuid.UUID) ([]*models.User, error) {
 	return users, nil
 }
 
-func (s *service) SearchByUsername(callerId uuid.UUID, prefix string, limit int) ([]BareUserDTO, error) {
+func (s *service) SearchByUsername(callerId uuid.UUID, prefix string, limit int) ([]models.BareUserDTO, error) {
 	return s.repo.SearchByUsername(callerId, prefix, limit)
 }

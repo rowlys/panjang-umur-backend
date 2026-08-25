@@ -772,6 +772,45 @@ paths:
       summary: Approve a submitted challenge submission and award points to that user
       tags:
       - Challenges
+  /challenges/submissions/me:
+    get:
+      parameters:
+      - description: Filter by submission status (submitted, approved, or all)
+        in: query
+        name: status
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.ChallengeSubmission'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List my challenge submissions (submit/approve status per challenge/period)
+      tags:
+      - Challenges
   /chat/{friendId}/messages:
     get:
       parameters:

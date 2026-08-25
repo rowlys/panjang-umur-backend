@@ -12,13 +12,6 @@ import (
 	"github.com/rowlys/panjang-umur-backend/internal/models"
 )
 
-type Handler struct {
-	service Service
-}
-
-type ErrorResponse struct {
-	Error string `json:"error"`
-}
 
 type CreateChallengeRequest struct {
 	Title       string      `json:"title" binding:"required"`
@@ -45,21 +38,45 @@ type GetSubmissionsResponse struct {
 	ApprovedAt  *time.Time       `json:"approvedAt"`
 }
 
-func NewHandler(service Service) *Handler {
-	return &Handler{service: service}
+type GetAssignedChallengeDTO struct {
+	ID          uuid.UUID `json:"id"`
+	Title       string    `json:"title"`
+	Description string    `json:"description"`
+	Points      int       `json:"points"`
+	Type        int       `json:"type"`
+	ResetDay    int      `json:"resetDay,omitempty"`
+	Creator     models.BareUserDTO `json:"creator"`
+	CreatedAt   time.Time `json:"createdAt"`
+	ExpiresAt   *time.Time `json:"expiresAt,omitempty"`
+}
+
+
+type UserService interface {
+	GetByIDs(ids []uuid.UUID) ([]*models.BareUserDTO, error)
+}
+
+type Handler struct {
+	service Service
+	userService UserService
+}
+
+func NewHandler(service Service, userService UserService) *Handler {
+	return &Handler{service: service, userService: userService}
 }
 
 func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
-	// Static routes must come before wildcard routes in Gin
 	rg.GET("", h.GetAll)
 	rg.GET("/me", h.GetByAssignee)
 	rg.GET("/me/created", h.GetByCreator)
 	rg.POST("", h.Create)
 	rg.GET("/:id", h.GetByID)
-	rg.GET("/:id/submissions", h.GetSubmissions)
+
 	rg.PATCH("/:challengeId/submit", h.Submit)
 	rg.PATCH("/:challengeId/cancel", h.Cancel)
+	rg.GET("/submissions/me", h.GetMySubmissions)
+	rg.GET("/submissions/:challengeId", h.GetSubmissions)
 	rg.PATCH("/submissions/:submissionId/approve", h.Approve)
+	
 	rg.DELETE("/:challengeId", h.Delete)
 
 	rg.GET("/proof-upload-url", h.GenerateProofUploadURL)
@@ -305,6 +322,39 @@ func (h *Handler) GetByID(c *gin.Context) {
 	c.JSON(http.StatusOK, challenge)
 }
 
+
+// GetMySubmissions godoc
+// @Summary      List my challenge submissions (submit/approve status per challenge/period)
+// @Tags         Challenges
+// @Produce      json
+// @Security     BearerAuth
+// @Param        status  query     string  false  "Filter by submission status (submitted, approved, or all)"
+// @Success      200     {array}   models.ChallengeSubmission
+// @Failure      400     {object}  map[string]string
+// @Failure      403     {object}  map[string]string
+// @Failure      500     {object}  map[string]string
+// @Router       /challenges/submissions/me [get]
+func (h *Handler) GetMySubmissions(c *gin.Context) {
+	userID, ok := httputil.ParseUserID(c)
+	if !ok {
+		return
+	}
+
+	statusFilter, ok := c.GetQuery("status")
+	if !ok {
+		statusFilter = ""
+	}
+
+	submissions, err := h.service.GetMySubmissions(userID, statusFilter)
+	if err != nil {
+		code, msg := httputil.ResolveServiceError(err)
+		c.JSON(code, gin.H{"error": msg})
+		return
+	}
+
+	c.JSON(http.StatusOK, submissions)
+}
+
 // GetSubmissions godoc
 // @Summary      List a challenge's submissions (submit/approve status per user/period)
 // @Tags         Challenges
@@ -373,7 +423,46 @@ func (h *Handler) GetByAssignee(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, challenges)
+	uniqueCreatorIDs := make(map[uuid.UUID]struct{})
+	var creatorIDs []uuid.UUID
+
+	for _, challenge := range challenges {
+		if _, exists := uniqueCreatorIDs[challenge.CreatorID]; !exists {
+			uniqueCreatorIDs[challenge.CreatorID] = struct{}{}
+			creatorIDs = append(creatorIDs, challenge.CreatorID)
+		}
+	}
+
+	creators, err := h.userService.GetByIDs(creatorIDs)
+	if err != nil {
+		code, msg := httputil.ResolveServiceError(err)
+		c.JSON(code, gin.H{"error": msg})
+		return
+	}
+
+	creatorMap := make(map[uuid.UUID]models.BareUserDTO)
+	for _, creator := range creators {
+		creatorMap[creator.ID] = *creator
+	}
+
+	response := make([]GetAssignedChallengeDTO, len(challenges))
+	for i, challenge := range challenges {
+		if creator, exists := creatorMap[challenge.CreatorID]; exists {
+			response[i] = GetAssignedChallengeDTO{
+				ID: challenge.ID,
+				Title: challenge.Title,
+				Description: challenge.Description,
+				Points: challenge.Points,
+				Type: int(challenge.Type),
+				ResetDay: challenge.ResetDay,
+				Creator:   creator,
+				CreatedAt: challenge.CreatedAt,
+				ExpiresAt: challenge.ExpiresAt,
+			}
+		}
+	}
+
+	c.JSON(http.StatusOK, response)
 }
 
 // GetByCreator godoc

@@ -36,6 +36,7 @@ type Repository interface {
 	FindSubmissionForPeriod(challengeID, userID uuid.UUID, periodStart time.Time) (*models.ChallengeSubmission, error)
 	FindSubmissionByID(id uuid.UUID) (*models.ChallengeSubmission, error)
 	FindLatestSubmission(challengeID, userID uuid.UUID) (*models.ChallengeSubmission, error)
+	FindSubmissionsByUser(userID uuid.UUID) ([]models.ChallengeSubmission, error)
 	FindSubmissionsByChallenge(challengeID uuid.UUID) ([]models.ChallengeSubmission, error)
 	FindApprovedSubmissions(userID uuid.UUID, challengeIDs []uuid.UUID) ([]models.ChallengeSubmission, error)
 	CountAssigneesWithoutApprovedSubmission(tx *gorm.DB, challengeID uuid.UUID) (int64, error)
@@ -180,6 +181,12 @@ func (r *repository) FindLatestSubmission(challengeID, userID uuid.UUID) (*model
 	err := r.db.Where("challenge_id = ? AND user_id = ?", challengeID, userID).
 		Order("period_start DESC").First(&s).Error
 	return &s, err
+}
+
+func (r *repository) FindSubmissionsByUser(userID uuid.UUID) ([]models.ChallengeSubmission, error) {
+	var submissions []models.ChallengeSubmission
+	err := r.db.Where("user_id = ?", userID).Find(&submissions).Error
+	return submissions, err
 }
 
 func (r *repository) FindSubmissionsByChallenge(challengeID uuid.UUID) ([]models.ChallengeSubmission, error) {

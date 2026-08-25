@@ -73,7 +73,7 @@ func main() {
 	userHandler := user.NewHandler(userService, friendshipService)
 	transactionHandler := transaction.NewHandler(transactionService)
 	friendshipHandler := friendship.NewHandler(friendshipService)
-	challengeHandler := challenge.NewHandler(challengeService)
+	challengeHandler := challenge.NewHandler(challengeService, userService)
 	rewardHandler := reward.NewHandler(rewardService)
 	chatHandler := chat.NewHandler(chatService, chatHub)
 	

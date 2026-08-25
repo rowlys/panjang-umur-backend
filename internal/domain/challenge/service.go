@@ -43,6 +43,8 @@ type Service interface {
 	GetByID(callerID uuid.UUID, id uuid.UUID) (*models.Challenge, error)
 	GetByAssignee(userID uuid.UUID) ([]models.Challenge, error)
 	GetByCreator(userID uuid.UUID, statuses []models.ChallengeStatus) ([]models.Challenge, error)
+
+	GetMySubmissions(callerID uuid.UUID, statusFilter string) ([]models.ChallengeSubmission, error)
 	GetSubmissions(callerID uuid.UUID, challengeID uuid.UUID) ([]models.ChallengeSubmission, error)
 
 	GenerateProofUploadURL(ctx context.Context) (string, uuid.UUID, error)
@@ -92,12 +94,19 @@ func (s *service) Create(ctx context.Context, input CreateChallengeInput) (*mode
 		}
 	}
 
+	resetDay := 0
+
+	if input.ResetDay != nil {
+		resetDay = *input.ResetDay
+	}
+
 	challenge := &models.Challenge{
 		ID:          uuid.New(),
 		Title:       input.Title,
 		Description: input.Description,
 		Points:      input.Points,
 		Type:        models.ChallengeType(input.Type),
+		ResetDay:    resetDay,
 		CreatorID:   input.CreatorID,
 		Restricted:  len(input.AssigneeIDs) > 0,
 		ExpiresAt:   input.ExpiresAt,
@@ -366,6 +375,36 @@ func (s *service) GetByAssignee(userID uuid.UUID) ([]models.Challenge, error) {
 
 func (s *service) GetByCreator(userID uuid.UUID, statuses []models.ChallengeStatus) ([]models.Challenge, error) {
 	return s.repo.FindByCreator(userID, statuses)
+}
+
+func (s *service) GetMySubmissions(callerID uuid.UUID, statusFilter string) ([]models.ChallengeSubmission, error) {
+	submissions, err := s.repo.FindSubmissionsByUser(callerID)
+	if err != nil {
+		return nil, &httputil.ServiceError{Code: http.StatusInternalServerError, Message: "Failed to load submissions"}
+	}
+
+	if statusFilter != "approved" && statusFilter != "submitted" {
+		return submissions, nil
+	}
+
+
+	var filtered []models.ChallengeSubmission
+	switch statusFilter {
+	case "approved":
+		for _, sub := range submissions {
+			if sub.Status == models.SubmissionApproved {
+				filtered = append(filtered, sub)
+			}
+		}
+	case "submitted":
+		for _, sub := range submissions {
+			if sub.Status == models.SubmissionSubmitted {
+				filtered = append(filtered, sub)
+			}
+		}
+	}
+
+	return filtered, nil
 }
 
 func (s *service) GetSubmissions(callerID uuid.UUID, challengeID uuid.UUID) ([]models.ChallengeSubmission, error) {

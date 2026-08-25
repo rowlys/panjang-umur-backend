@@ -6,19 +6,14 @@ import (
 	"gorm.io/gorm"
 )
 
-type BareUserDTO struct {
-	ID       uuid.UUID `json:"id"`
-	Username string    `json:"username"`
-	Name     string    `json:"name"`
-}
 
 type Repository interface {
 	Create(user *models.User) error
 	Save(user *models.User) error
 	FindByID(id uuid.UUID) (*models.User, error)
 	FindByUsername(username string) (*models.User, error)
-	FindByIDs(ids []uuid.UUID) ([]*models.User, error)
-	SearchByUsername(callerId uuid.UUID, prefix string, limit int) ([]BareUserDTO, error)
+	FindByIDs(ids []uuid.UUID) ([]*models.BareUserDTO, error)
+	SearchByUsername(callerId uuid.UUID, prefix string, limit int) ([]models.BareUserDTO, error)
 }
 
 type repository struct {
@@ -50,14 +45,17 @@ func (r *repository) FindByUsername(username string) (*models.User, error) {
 	return &user, err
 }
 
-func (r *repository) FindByIDs(ids []uuid.UUID) ([]*models.User, error) {
-	var users []*models.User
-	err := r.db.Where("id IN ?", ids).Find(&users).Error
+func (r *repository) FindByIDs(ids []uuid.UUID) ([]*models.BareUserDTO, error) {
+	var users []*models.BareUserDTO
+	err := r.db.Model(&models.User{}).
+		Select("id, username, name").
+		Where("id IN ?", ids).
+		Find(&users).Error
 	return users, err
 }
 
-func (r *repository) SearchByUsername(callerId uuid.UUID, prefix string, limit int) ([]BareUserDTO, error) {
-	var results []BareUserDTO
+func (r *repository) SearchByUsername(callerId uuid.UUID, prefix string, limit int) ([]models.BareUserDTO, error) {
+	var results []models.BareUserDTO
 	searchTerm := prefix + "%"
 
 	err := r.db.Model(&models.User{}).
