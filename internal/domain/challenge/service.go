@@ -45,7 +45,7 @@ type Service interface {
 	GetByCreator(userID uuid.UUID, statuses []models.ChallengeStatus) ([]models.Challenge, error)
 
 	GetMySubmissions(callerID uuid.UUID, statusFilter string) ([]models.ChallengeSubmission, error)
-	GetSubmissions(callerID uuid.UUID, challengeID uuid.UUID) ([]models.ChallengeSubmission, error)
+	GetSubmissions(callerID uuid.UUID, challengeID uuid.UUID, statusFilter string, before *time.Time, limit int) ([]models.ChallengeSubmission, error)
 	GetMySubmissionStatus(callerID uuid.UUID, challenge *models.Challenge) (*models.SubmissionStatus, error)
 
 	GenerateProofUploadURL(ctx context.Context) (string, uuid.UUID, error)
@@ -428,7 +428,7 @@ func (s *service) GetMySubmissions(callerID uuid.UUID, statusFilter string) ([]m
 	return filtered, nil
 }
 
-func (s *service) GetSubmissions(callerID uuid.UUID, challengeID uuid.UUID) ([]models.ChallengeSubmission, error) {
+func (s *service) GetSubmissions(callerID uuid.UUID, challengeID uuid.UUID, statusFilter string, before *time.Time, limit int) ([]models.ChallengeSubmission, error) {
 	challenge, err := s.GetByID(callerID, challengeID)
 	if err != nil {
 		return nil, err
@@ -438,7 +438,23 @@ func (s *service) GetSubmissions(callerID uuid.UUID, challengeID uuid.UUID) ([]m
 		return nil, &httputil.ServiceError{Code: http.StatusForbidden, Message: "You do not have access to this challenge's submissions"}
 	}
 
-	return s.repo.FindSubmissionsByChallenge(challengeID)
+	if limit <= 0 {
+		limit = 20
+	} else if limit > 50 {
+		limit = 50
+	}
+
+	var status *models.SubmissionStatus
+	switch statusFilter {
+	case "submitted":
+		submitted := models.SubmissionSubmitted
+		status = &submitted
+	case "approved":
+		approved := models.SubmissionApproved
+		status = &approved
+	}
+
+	return s.repo.FindSubmissionsByChallenge(challengeID, status, before, limit)
 }
 
 func (s *service) GenerateProofUploadURL(ctx context.Context) (string, uuid.UUID, error) {

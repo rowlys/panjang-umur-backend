@@ -2,6 +2,7 @@ package challenge
 
 import (
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -415,7 +416,10 @@ func (h *Handler) GetMySubmissions(c *gin.Context) {
 // @Tags         Challenges
 // @Produce      json
 // @Security     BearerAuth
-// @Param        challengeId  path      string  true  "Challenge ID (UUID)"
+// @Param        challengeId  path      string  true   "Challenge ID (UUID)"
+// @Param        status       query     string  false  "Filter by submission status (submitted, approved, or all)"
+// @Param        before       query     string  false  "Only return submissions older than this RFC3339 timestamp (pagination cursor)"
+// @Param        limit        query     int     false  "Max submissions to return (default 20, capped at 50)"
 // @Success      200  {array}   models.ChallengeSubmission
 // @Failure      400  {object}  map[string]string
 // @Failure      403  {object}  map[string]string
@@ -433,7 +437,29 @@ func (h *Handler) GetSubmissions(c *gin.Context) {
 		return
 	}
 
-	submissions, err := h.service.GetSubmissions(userID, id)
+	statusFilter := c.Query("status")
+
+	var before *time.Time
+	if raw := c.Query("before"); raw != "" {
+		parsed, err := time.Parse(time.RFC3339, raw)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid 'before' timestamp, expected RFC3339"})
+			return
+		}
+		before = &parsed
+	}
+
+	limit := 0
+	if raw := c.Query("limit"); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid 'limit', expected an integer"})
+			return
+		}
+		limit = parsed
+	}
+
+	submissions, err := h.service.GetSubmissions(userID, id, statusFilter, before, limit)
 	if err != nil {
 		code, msg := httputil.ResolveServiceError(err)
 		c.JSON(code, gin.H{"error": msg})

@@ -37,7 +37,7 @@ type Repository interface {
 	FindSubmissionByID(id uuid.UUID) (*models.ChallengeSubmission, error)
 	FindLatestSubmission(challengeID, userID uuid.UUID) (*models.ChallengeSubmission, error)
 	FindSubmissionsByUser(userID uuid.UUID) ([]models.ChallengeSubmission, error)
-	FindSubmissionsByChallenge(challengeID uuid.UUID) ([]models.ChallengeSubmission, error)
+	FindSubmissionsByChallenge(challengeID uuid.UUID, statusFilter *models.SubmissionStatus, before *time.Time, limit int) ([]models.ChallengeSubmission, error)
 	FindSubmissionsByUserAndChallenges(userID uuid.UUID, challengeIDs []uuid.UUID) ([]models.ChallengeSubmission, error)
 	CountAssigneesWithoutApprovedSubmission(tx *gorm.DB, challengeID uuid.UUID) (int64, error)
 }
@@ -200,9 +200,16 @@ func (r *repository) FindSubmissionsByUser(userID uuid.UUID) ([]models.Challenge
 	return submissions, err
 }
 
-func (r *repository) FindSubmissionsByChallenge(challengeID uuid.UUID) ([]models.ChallengeSubmission, error) {
+func (r *repository) FindSubmissionsByChallenge(challengeID uuid.UUID, statusFilter *models.SubmissionStatus, before *time.Time, limit int) ([]models.ChallengeSubmission, error) {
 	var submissions []models.ChallengeSubmission
-	err := r.db.Where("challenge_id = ?", challengeID).Find(&submissions).Error
+	query := r.db.Where("challenge_id = ?", challengeID)
+	if statusFilter != nil {
+		query = query.Where("status = ?", *statusFilter)
+	}
+	if before != nil {
+		query = query.Where("submitted_at < ?", *before)
+	}
+	err := query.Order("submitted_at desc").Limit(limit).Find(&submissions).Error
 	return submissions, err
 }
 

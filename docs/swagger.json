@@ -402,6 +402,24 @@
                         "name": "challengeId",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by submission status (submitted, approved, or all)",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Only return submissions older than this RFC3339 timestamp (pagination cursor)",
+                        "name": "before",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Max submissions to return (default 20, capped at 50)",
+                        "name": "limit",
+                        "in": "query"
                     }
                 ],
                 "responses": {

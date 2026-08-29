@@ -742,6 +742,19 @@ paths:
         name: challengeId
         required: true
         type: string
+      - description: Filter by submission status (submitted, approved, or all)
+        in: query
+        name: status
+        type: string
+      - description: Only return submissions older than this RFC3339 timestamp (pagination
+          cursor)
+        in: query
+        name: before
+        type: string
+      - description: Max submissions to return (default 20, capped at 50)
+        in: query
+        name: limit
+        type: integer
       produces:
       - application/json
       responses:
