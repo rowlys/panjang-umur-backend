@@ -28,14 +28,32 @@ type SubmitChallengeRequest struct {
 }
 
 type GetSubmissionsResponse struct {
-	ID          uuid.UUID        `json:"id"`
-	ChallengeID uuid.UUID        `json:"challengeId"`
-	UserID      uuid.UUID        `json:"userId"`
-	ProofURL *string        `json:"ProofURL,omitempty"`
-	PeriodStart time.Time        `json:"periodStart"`
-	Status      int `json:"status"`
-	SubmittedAt time.Time        `gorm:"not null" json:"submittedAt"`
-	ApprovedAt  *time.Time       `json:"approvedAt"`
+	ID          uuid.UUID          `json:"id"`
+	ChallengeID uuid.UUID          `json:"challengeId"`
+	UserID      uuid.UUID          `json:"userId"`
+	User        models.BareUserDTO `json:"user"`
+	ProofURL    *string            `json:"ProofURL,omitempty"`
+	PeriodStart time.Time          `json:"periodStart"`
+	Status      int                `json:"status"`
+	SubmittedAt time.Time          `gorm:"not null" json:"submittedAt"`
+	ApprovedAt  *time.Time         `json:"approvedAt"`
+}
+
+type GetChallengeDetailResponse struct {
+	ID          uuid.UUID          `json:"id"`
+	Title       string             `json:"title"`
+	Description string             `json:"description"`
+	Points      int                `json:"points"`
+	Status      int                `json:"status"`
+	Type        int                `json:"type"`
+	ResetDay    int                `json:"resetDay"`
+	Restricted  bool               `json:"restricted"`
+	Creator     models.BareUserDTO `json:"creator"`
+	CreatedAt   time.Time          `json:"createdAt"`
+	ExpiresAt   *time.Time         `json:"expiresAt,omitempty"`
+	// MySubmissionStatus is the caller's submission status for the current
+	// period (nil if they haven't submitted yet). Always nil for the creator.
+	MySubmissionStatus *int `json:"mySubmissionStatus,omitempty"`
 }
 
 type GetAssignedChallengeDTO struct {
@@ -291,12 +309,12 @@ func (h *Handler) GetAll(c *gin.Context) {
 }
 
 // GetByID godoc
-// @Summary      Get a challenge by ID
+// @Summary      Get a challenge by ID, including creator info and the caller's submission status for the current period
 // @Tags         Challenges
 // @Produce      json
 // @Security     BearerAuth
 // @Param        id   path      string  true  "Challenge ID (UUID)"
-// @Success      200  {object}  models.Challenge
+// @Success      200  {object}  GetChallengeDetailResponse
 // @Failure      400  {object}  map[string]string
 // @Failure      404  {object}  map[string]string
 // @Router       /challenges/{id} [get]
@@ -319,7 +337,44 @@ func (h *Handler) GetByID(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, challenge)
+	creators, err := h.userService.GetByIDs([]uuid.UUID{challenge.CreatorID})
+	if err != nil {
+		code, msg := httputil.ResolveServiceError(err)
+		c.JSON(code, gin.H{"error": msg})
+		return
+	}
+	
+	var creator models.BareUserDTO
+	if len(creators) > 0 {
+		creator = *creators[0]
+	}
+
+	submissionStatus, err := h.service.GetMySubmissionStatus(userID, challenge)
+	if err != nil {
+		code, msg := httputil.ResolveServiceError(err)
+		c.JSON(code, gin.H{"error": msg})
+		return
+	}
+	var mySubmissionStatus *int
+	if submissionStatus != nil {
+		status := int(*submissionStatus)
+		mySubmissionStatus = &status
+	}
+
+	c.JSON(http.StatusOK, GetChallengeDetailResponse{
+		ID:                 challenge.ID,
+		Title:              challenge.Title,
+		Description:        challenge.Description,
+		Points:             challenge.Points,
+		Status:             int(challenge.Status),
+		Type:               int(challenge.Type),
+		ResetDay:           challenge.ResetDay,
+		Restricted:         challenge.Restricted,
+		Creator:            creator,
+		CreatedAt:          challenge.CreatedAt,
+		ExpiresAt:          challenge.ExpiresAt,
+		MySubmissionStatus: mySubmissionStatus,
+	})
 }
 
 
@@ -360,14 +415,14 @@ func (h *Handler) GetMySubmissions(c *gin.Context) {
 // @Tags         Challenges
 // @Produce      json
 // @Security     BearerAuth
-// @Param        id   path      string  true  "Challenge ID (UUID)"
+// @Param        challengeId  path      string  true  "Challenge ID (UUID)"
 // @Success      200  {array}   models.ChallengeSubmission
 // @Failure      400  {object}  map[string]string
 // @Failure      403  {object}  map[string]string
 // @Failure      404  {object}  map[string]string
-// @Router       /challenges/{id}/submissions [get]
+// @Router       /challenges/submissions/{challengeId} [get]
 func (h *Handler) GetSubmissions(c *gin.Context) {
-	id, err := uuid.Parse(c.Param("id"))
+	id, err := uuid.Parse(c.Param("challengeId"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid challenge ID"})
 		return
@@ -385,12 +440,34 @@ func (h *Handler) GetSubmissions(c *gin.Context) {
 		return
 	}
 
-	var response []GetSubmissionsResponse
+	uniqueSubmitterIDs := make(map[uuid.UUID]struct{})
+	var submitterIDs []uuid.UUID
+	for _, submission := range submissions {
+		if _, exists := uniqueSubmitterIDs[submission.UserID]; !exists {
+			uniqueSubmitterIDs[submission.UserID] = struct{}{}
+			submitterIDs = append(submitterIDs, submission.UserID)
+		}
+	}
+
+	submitters, err := h.userService.GetByIDs(submitterIDs)
+	if err != nil {
+		code, msg := httputil.ResolveServiceError(err)
+		c.JSON(code, gin.H{"error": msg})
+		return
+	}
+
+	submitterMap := make(map[uuid.UUID]models.BareUserDTO)
+	for _, submitter := range submitters {
+		submitterMap[submitter.ID] = *submitter
+	}
+
+	response := []GetSubmissionsResponse{}
 	for _, submission := range submissions {
 		response = append(response, GetSubmissionsResponse{
 			ID:          submission.ID,
 			ChallengeID: submission.ChallengeID,
 			UserID:      submission.UserID,
+			User:        submitterMap[submission.UserID],
 			ProofURL:    h.service.GetProofURL(submission.ProofImageID),
 			PeriodStart: submission.PeriodStart,
 			Status:      int(submission.Status),

@@ -38,7 +38,7 @@ type Repository interface {
 	FindLatestSubmission(challengeID, userID uuid.UUID) (*models.ChallengeSubmission, error)
 	FindSubmissionsByUser(userID uuid.UUID) ([]models.ChallengeSubmission, error)
 	FindSubmissionsByChallenge(challengeID uuid.UUID) ([]models.ChallengeSubmission, error)
-	FindApprovedSubmissions(userID uuid.UUID, challengeIDs []uuid.UUID) ([]models.ChallengeSubmission, error)
+	FindSubmissionsByUserAndChallenges(userID uuid.UUID, challengeIDs []uuid.UUID) ([]models.ChallengeSubmission, error)
 	CountAssigneesWithoutApprovedSubmission(tx *gorm.DB, challengeID uuid.UUID) (int64, error)
 }
 
@@ -122,8 +122,19 @@ func (r *repository) FindChallengesInvolvingUser(userID uuid.UUID) ([]models.Cha
 		`status = ? AND (
 			EXISTS (SELECT 1 FROM challenge_assignees WHERE challenge_assignees.challenge_id = challenges.id AND challenge_assignees.user_id = ?)
 			OR EXISTS (SELECT 1 FROM challenge_submissions WHERE challenge_submissions.challenge_id = challenges.id AND challenge_submissions.user_id = ?)
+			OR (
+				NOT restricted
+				AND EXISTS (
+					SELECT 1 FROM friendships
+					WHERE friendships.status = ?
+					AND (
+						(friendships.requester_id = challenges.creator_id AND friendships.addressee_id = ?)
+						OR (friendships.requester_id = ? AND friendships.addressee_id = challenges.creator_id)
+					)
+				)
+			)
 		)`,
-		models.StatusActive, userID, userID,
+		models.StatusActive, userID, userID, models.FriendshipAccepted, userID, userID,
 	).Find(&challenges).Error
 	return challenges, err
 }
@@ -195,10 +206,9 @@ func (r *repository) FindSubmissionsByChallenge(challengeID uuid.UUID) ([]models
 	return submissions, err
 }
 
-func (r *repository) FindApprovedSubmissions(userID uuid.UUID, challengeIDs []uuid.UUID) ([]models.ChallengeSubmission, error) {
+func (r *repository) FindSubmissionsByUserAndChallenges(userID uuid.UUID, challengeIDs []uuid.UUID) ([]models.ChallengeSubmission, error) {
     var submissions []models.ChallengeSubmission
-    err := r.db.Where("user_id = ? AND challenge_id IN ? AND status = ?", 
-        userID, challengeIDs, models.SubmissionApproved).
+    err := r.db.Where("user_id = ? AND challenge_id IN ?", userID, challengeIDs).
         Find(&submissions).Error
     return submissions, err
 }

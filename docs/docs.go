@@ -388,6 +388,69 @@ const docTemplate = `{
                 }
             }
         },
+        "/challenges/submissions/{challengeId}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Challenges"
+                ],
+                "summary": "List a challenge's submissions (submit/approve status per user/period)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Challenge ID (UUID)",
+                        "name": "challengeId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/models.ChallengeSubmission"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/challenges/submissions/{submissionId}/approve": {
             "patch": {
                 "security": [
@@ -653,7 +716,7 @@ const docTemplate = `{
                 "tags": [
                     "Challenges"
                 ],
-                "summary": "Get a challenge by ID",
+                "summary": "Get a challenge by ID, including creator info and the caller's submission status for the current period",
                 "parameters": [
                     {
                         "type": "string",
@@ -667,74 +730,11 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/models.Challenge"
+                            "$ref": "#/definitions/challenge.GetChallengeDetailResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/challenges/{id}/submissions": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Challenges"
-                ],
-                "summary": "List a challenge's submissions (submit/approve status per user/period)",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Challenge ID (UUID)",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/models.ChallengeSubmission"
-                            }
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -2055,10 +2055,66 @@ const docTemplate = `{
                 }
             }
         },
+        "challenge.GetChallengeDetailResponse": {
+            "type": "object",
+            "properties": {
+                "createdAt": {
+                    "type": "string"
+                },
+                "creator": {
+                    "$ref": "#/definitions/models.BareUserDTO"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "expiresAt": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "mySubmissionStatus": {
+                    "description": "MySubmissionStatus is the caller's submission status for the current\nperiod (nil if they haven't submitted yet). Always nil for the creator.",
+                    "type": "integer"
+                },
+                "points": {
+                    "type": "integer"
+                },
+                "resetDay": {
+                    "type": "integer"
+                },
+                "restricted": {
+                    "type": "boolean"
+                },
+                "status": {
+                    "type": "integer"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "integer"
+                }
+            }
+        },
         "challenge.SubmitChallengeRequest": {
             "type": "object",
             "properties": {
                 "proofImageId": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.BareUserDTO": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "username": {
                     "type": "string"
                 }
             }

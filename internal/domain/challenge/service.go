@@ -46,6 +46,7 @@ type Service interface {
 
 	GetMySubmissions(callerID uuid.UUID, statusFilter string) ([]models.ChallengeSubmission, error)
 	GetSubmissions(callerID uuid.UUID, challengeID uuid.UUID) ([]models.ChallengeSubmission, error)
+	GetMySubmissionStatus(callerID uuid.UUID, challenge *models.Challenge) (*models.SubmissionStatus, error)
 
 	GenerateProofUploadURL(ctx context.Context) (string, uuid.UUID, error)
 	GetProofURL(imageID *uuid.UUID) *string
@@ -349,14 +350,20 @@ func (s *service) GetByAssignee(userID uuid.UUID) ([]models.Challenge, error) {
 		challengeIDs[i] = c.ID
 	}
 
-	approvedSubmissions, err := s.repo.FindApprovedSubmissions(userID, challengeIDs)
+	submissions, err := s.repo.FindSubmissionsByUserAndChallenges(userID, challengeIDs)
 	if err != nil {
-		return nil, &httputil.ServiceError{Code: http.StatusInternalServerError, Message: "Failed to load approved submissions"}
+		return nil, &httputil.ServiceError{Code: http.StatusInternalServerError, Message: "Failed to load submissions"}
 	}
 
-	idToPeriodMap := make(map[uuid.UUID]time.Time)
-	for _, sub := range approvedSubmissions {
-		idToPeriodMap[sub.ChallengeID] = sub.PeriodStart
+	// Track every period the user has already submitted for (submitted OR approved),
+	// per challenge, so a challenge with submission history across multiple periods
+	// (e.g. a daily challenge done on previous days) doesn't shadow the current period.
+	submittedPeriods := make(map[uuid.UUID]map[int64]struct{})
+	for _, sub := range submissions {
+		if submittedPeriods[sub.ChallengeID] == nil {
+			submittedPeriods[sub.ChallengeID] = make(map[int64]struct{})
+		}
+		submittedPeriods[sub.ChallengeID][sub.PeriodStart.UnixNano()] = struct{}{}
 	}
 
 	var result []models.Challenge
@@ -365,12 +372,26 @@ func (s *service) GetByAssignee(userID uuid.UUID) ([]models.Challenge, error) {
 			continue
 		}
 		currentPeriod := currentPeriodStart(c.Type, time.Now(), c.ResetDay)
-		if lastApprovedPeriod, exists := idToPeriodMap[c.ID]; exists && lastApprovedPeriod.Equal(currentPeriod) {
-			continue
+		if periods, exists := submittedPeriods[c.ID]; exists {
+			if _, alreadySubmitted := periods[currentPeriod.UnixNano()]; alreadySubmitted {
+				continue
+			}
 		}
 		result = append(result, c)
 	}
 	return result, nil
+}
+
+func (s *service) GetMySubmissionStatus(callerID uuid.UUID, challenge *models.Challenge) (*models.SubmissionStatus, error) {
+	period := currentPeriodStart(challenge.Type, time.Now(), challenge.ResetDay)
+	submission, err := s.repo.FindSubmissionForPeriod(challenge.ID, callerID, period)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, &httputil.ServiceError{Code: http.StatusInternalServerError, Message: "Failed to look up submission"}
+	}
+	return &submission.Status, nil
 }
 
 func (s *service) GetByCreator(userID uuid.UUID, statuses []models.ChallengeStatus) ([]models.Challenge, error) {
@@ -388,7 +409,7 @@ func (s *service) GetMySubmissions(callerID uuid.UUID, statusFilter string) ([]m
 	}
 
 
-	var filtered []models.ChallengeSubmission
+	filtered := []models.ChallengeSubmission{}
 	switch statusFilter {
 	case "approved":
 		for _, sub := range submissions {
