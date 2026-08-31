@@ -2,6 +2,7 @@ package reward
 
 import (
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -27,6 +28,19 @@ type RewardClaimHistoryResponse struct {
 	GiverUsername string             `json:"giverUsername"`
 }
 
+type RewardClaimGivenResponse struct {
+	ID 		  	  	 uuid.UUID          `json:"id"`
+	RewardID      	 uuid.UUID          `json:"rewardId"`
+	RedeemerID    	 uuid.UUID          `json:"redeemerId"`
+	GiverID       	 uuid.UUID          `json:"giverId"`
+	Price         	 int                `json:"price"`
+	Status        	 models.ClaimStatus `json:"status"`
+	RedeemedAt    	 time.Time          `json:"redeemedAt"`
+	FulfilledAt   	 *time.Time         `json:"fulfilledAt"`
+	ResolvedAt    	 *time.Time         `json:"resolvedAt"`
+	RedeemerUsername string             `json:"redeemerUsername"`
+}
+
 type CreateRewardRequest struct {
 	Title          string                      `json:"title" binding:"required"`
 	Description    string                      `json:"description"`
@@ -34,6 +48,10 @@ type CreateRewardRequest struct {
 	Visibility     models.RewardVisibilityMode `json:"visibility"`
 	Stock          int                         `json:"stock" binding:"required,gt=0"`
 	AllowedUserIDs []uuid.UUID                 `json:"allowedUserIds"`
+}
+
+type UpdateRewardStockRequest struct {
+	Stock int `json:"stock" binding:"gte=0"`
 }
 
 func NewHandler(service Service) *Handler {
@@ -45,14 +63,16 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 	rg.POST("", h.Create)
 	rg.GET("/shop/:giverId", h.GetShopByGiver)
 	rg.GET("/shop/me", h.GetMyShop)
-	rg.PATCH("/:rewardId/redeem", h.Redeem)
-	rg.PATCH("/:rewardId/cancel", h.Cancel)
 	rg.GET("/claims/me", h.GetClaimHistory)
 	rg.GET("/claims/given", h.GetClaimsGiven)
 	rg.PATCH("/claims/:claimId/fulfill", h.FulfillClaim)
 	rg.PATCH("/claims/:claimId/refund/request", h.RequestRefund)
 	rg.PATCH("/claims/:claimId/refund/approve", h.ApproveRefund)
 
+	rg.PATCH("/:rewardId/redeem", h.Redeem)
+	rg.PATCH("/:rewardId/stock", h.UpdateStock)
+	rg.GET("/:rewardId/claims", h.GetClaimsForReward)
+	rg.GET("/:rewardId", h.GetByID)
 }
 
 // Create godoc
@@ -195,8 +215,8 @@ func (h *Handler) GetMyShop(c *gin.Context) {
 	c.JSON(http.StatusOK, rewards)
 }
 
-// Cancel godoc
-// @Summary      Cancel an available reward
+// GetByID godoc
+// @Summary      Get a reward I own by ID
 // @Tags         Rewards
 // @Produce      json
 // @Security     BearerAuth
@@ -205,8 +225,8 @@ func (h *Handler) GetMyShop(c *gin.Context) {
 // @Failure      400       {object}  map[string]string
 // @Failure      403       {object}  map[string]string
 // @Failure      404       {object}  map[string]string
-// @Router       /rewards/{rewardId}/cancel [patch]
-func (h *Handler) Cancel(c *gin.Context) {
+// @Router       /rewards/{rewardId} [get]
+func (h *Handler) GetByID(c *gin.Context) {
 	rewardID, err := uuid.Parse(c.Param("rewardId"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid reward ID"})
@@ -218,7 +238,7 @@ func (h *Handler) Cancel(c *gin.Context) {
 		return
 	}
 
-	reward, err := h.service.Cancel(c.Request.Context(), rewardID, userID)
+	reward, err := h.service.GetByID(rewardID, userID)
 	if err != nil {
 		code, msg := httputil.ResolveServiceError(err)
 		c.JSON(code, gin.H{"error": msg})
@@ -228,12 +248,134 @@ func (h *Handler) Cancel(c *gin.Context) {
 	c.JSON(http.StatusOK, reward)
 }
 
-// GetClaimsGiven godoc
-// @Summary      List of rewards I have given
+// UpdateStock godoc
+// @Summary      Update a reward's stock (also flips availability accordingly)
+// @Tags         Rewards
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        rewardId  path      string                     true  "Reward ID (UUID)"
+// @Param        body      body      UpdateRewardStockRequest   true  "New stock amount"
+// @Success      200       {object}  models.Reward
+// @Failure      400       {object}  map[string]string
+// @Failure      403       {object}  map[string]string
+// @Failure      404       {object}  map[string]string
+// @Router       /rewards/{rewardId}/stock [patch]
+func (h *Handler) UpdateStock(c *gin.Context) {
+	rewardID, err := uuid.Parse(c.Param("rewardId"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid reward ID"})
+		return
+	}
+
+	userID, ok := httputil.ParseUserID(c)
+	if !ok {
+		return
+	}
+
+	var input UpdateRewardStockRequest
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	reward, err := h.service.UpdateStock(c.Request.Context(), rewardID, userID, input.Stock)
+	if err != nil {
+		code, msg := httputil.ResolveServiceError(err)
+		c.JSON(code, gin.H{"error": msg})
+		return
+	}
+
+	c.JSON(http.StatusOK, reward)
+}
+
+// GetClaimsForReward godoc
+// @Summary      List claims made against a specific reward I own
 // @Tags         Rewards
 // @Produce      json
 // @Security     BearerAuth
-// @Success      200  {array}   models.Reward
+// @Param        rewardId  path      string  true   "Reward ID (UUID)"
+// @Param        before    query     string  false  "Only return claims older than this RFC3339 timestamp (pagination cursor)"
+// @Param        limit     query     int     false  "Max claims to return (default 20, capped at 50)"
+// @Success      200  {array}   RewardClaimGivenResponse
+// @Failure      400  {object}  map[string]string
+// @Failure      403  {object}  map[string]string
+// @Failure      404  {object}  map[string]string
+// @Router       /rewards/{rewardId}/claims [get]
+func (h *Handler) GetClaimsForReward(c *gin.Context) {
+	rewardID, err := uuid.Parse(c.Param("rewardId"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid reward ID"})
+		return
+	}
+
+	userID, ok := httputil.ParseUserID(c)
+	if !ok {
+		return
+	}
+
+	before, limit, ok := parseClaimsPageParams(c)
+	if !ok {
+		return
+	}
+
+	claims, err := h.service.GetClaimsForReward(rewardID, userID, before, limit)
+	if err != nil {
+		code, msg := httputil.ResolveServiceError(err)
+		c.JSON(code, gin.H{"error": msg})
+		return
+	}
+
+	response := make([]RewardClaimGivenResponse, len(claims))
+	for i, claim := range claims {
+		response[i] = RewardClaimGivenResponse{
+			ID:               claim.ID,
+			RewardID:         claim.RewardID,
+			RedeemerID:       claim.RedeemerID,
+			GiverID:          claim.GiverID,
+			Price:            claim.Price,
+			Status:           claim.Status,
+			RedeemedAt:       claim.RedeemedAt,
+			FulfilledAt:      claim.FulfilledAt,
+			ResolvedAt:       claim.ResolvedAt,
+			RedeemerUsername: claim.RedeemerUsername,
+		}
+	}
+
+	c.JSON(http.StatusOK, response)
+}
+
+func parseClaimsPageParams(c *gin.Context) (before *time.Time, limit int, ok bool) {
+	if raw := c.Query("before"); raw != "" {
+		parsed, err := time.Parse(time.RFC3339, raw)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid 'before' timestamp, expected RFC3339"})
+			return nil, 0, false
+		}
+		before = &parsed
+	}
+
+	if raw := c.Query("limit"); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid 'limit', expected an integer"})
+			return nil, 0, false
+		}
+		limit = parsed
+	}
+
+	return before, limit, true
+}
+
+// GetClaimsGiven godoc
+// @Summary      List of reward claims made against my rewards (as the giver)
+// @Tags         Rewards
+// @Produce      json
+// @Security     BearerAuth
+// @Param        before  query     string  false  "Only return claims older than this RFC3339 timestamp (pagination cursor)"
+// @Param        limit   query     int     false  "Max claims to return (default 20, capped at 50)"
+// @Success      200  {array}   RewardClaimGivenResponse
+// @Failure      400  {object}  map[string]string
 // @Failure      500  {object}  map[string]string
 // @Router       /rewards/claims/given [get]
 func (h *Handler) GetClaimsGiven(c *gin.Context) {
@@ -242,23 +384,46 @@ func (h *Handler) GetClaimsGiven(c *gin.Context) {
 		return
 	}
 
-	rewards, err := h.service.GetClaimsGivenByID(userID)
+	before, limit, ok := parseClaimsPageParams(c)
+	if !ok {
+		return
+	}
+
+	claims, err := h.service.GetClaimsGivenByID(userID, before, limit)
 	if err != nil {
 		code, msg := httputil.ResolveServiceError(err)
 		c.JSON(code, gin.H{"error": msg})
 		return
 	}
 
-	c.JSON(http.StatusOK, rewards)
-}
+	response := make([]RewardClaimGivenResponse, len(claims))
+	for i, claim := range claims {
+		response[i] = RewardClaimGivenResponse{
+			ID:               claim.ID,
+			RewardID:         claim.RewardID,
+			RedeemerID:       claim.RedeemerID,
+			GiverID:          claim.GiverID,
+			Price:            claim.Price,
+			Status:           claim.Status,
+			RedeemedAt:       claim.RedeemedAt,
+			FulfilledAt:      claim.FulfilledAt,
+			ResolvedAt:       claim.ResolvedAt,
+			RedeemerUsername: claim.RedeemerUsername,
+		}
+	}
 
+	c.JSON(http.StatusOK, response)
+}
 
 // GetClaimHistory godoc
 // @Summary      List rewards I have redeemed (my claim history)
 // @Tags         Rewards
 // @Produce      json
 // @Security     BearerAuth
+// @Param        before  query     string  false  "Only return claims older than this RFC3339 timestamp (pagination cursor)"
+// @Param        limit   query     int     false  "Max claims to return (default 20, capped at 50)"
 // @Success      200  {array}   RewardClaimHistoryResponse
+// @Failure      400  {object}  map[string]string
 // @Failure      500  {object}  map[string]string
 // @Router       /rewards/claims/me [get]
 func (h *Handler) GetClaimHistory(c *gin.Context) {
@@ -267,7 +432,12 @@ func (h *Handler) GetClaimHistory(c *gin.Context) {
 		return
 	}
 
-	claims, err := h.service.GetClaimHistory(userID)
+	before, limit, ok := parseClaimsPageParams(c)
+	if !ok {
+		return
+	}
+
+	claims, err := h.service.GetClaimHistory(userID, before, limit)
 	if err != nil {
 		code, msg := httputil.ResolveServiceError(err)
 		c.JSON(code, gin.H{"error": msg})
@@ -275,8 +445,8 @@ func (h *Handler) GetClaimHistory(c *gin.Context) {
 	}
 
 	response := make([]RewardClaimHistoryResponse, len(claims))
-	for _, claim := range claims {
-		response = append(response, RewardClaimHistoryResponse{
+	for i, claim := range claims {
+		response[i] = RewardClaimHistoryResponse{
 			ID:            claim.ID,
 			RewardID:      claim.RewardID,
 			RedeemerID:    claim.RedeemerID,
@@ -287,7 +457,7 @@ func (h *Handler) GetClaimHistory(c *gin.Context) {
 			FulfilledAt:   claim.FulfilledAt,
 			ResolvedAt:    claim.ResolvedAt,
 			GiverUsername: claim.GiverUsername,
-		})
+		}
 	}
 
 	c.JSON(http.StatusOK, response)

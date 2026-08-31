@@ -13,7 +13,7 @@ import (
 func Seed() {
 	log.Println("Seeding database with initial data...")
 
-	DB.Exec("TRUNCATE TABLE users, friendships, challenges, challenge_assignees, challenge_submissions, rewards, reward_visibilities, transactions, user_point_balances, messages CASCADE")
+	DB.Exec("TRUNCATE TABLE users, friendships, challenges, challenge_assignees, challenge_submissions, rewards, reward_visibilities, reward_claims, transactions, user_point_balances, messages CASCADE")
 
 	bastenUser := SeedUser("basten", "Basten", "password123")
 	alleeceUser := SeedUser("alleece", "Alleece", "password123")

@@ -17,7 +17,7 @@ const (
 type RewardClaim struct {
 	ID        uuid.UUID `gorm:"primaryKey;type:uuid" json:"id"`
 	RewardID  uuid.UUID `gorm:"type:uuid;not null;index" json:"rewardId"`
-	RedeemerID    uuid.UUID `gorm:"type:uuid;not null;index" json:"userId"`
+	RedeemerID    uuid.UUID `gorm:"type:uuid;not null;index" json:"redeemerId"`
 	GiverID  uuid.UUID `gorm:"type:uuid;not null;index" json:"giverId"`
 	Price	 int       `gorm:"not null" json:"price"`
 	Status	ClaimStatus `gorm:"not null;default:0" json:"status"`

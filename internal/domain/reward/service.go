@@ -27,12 +27,25 @@ type RewardClaimHistory struct {
 	RewardID   uuid.UUID
 	RedeemerID uuid.UUID
 	GiverID    uuid.UUID
-	Price      int      
+	Price      int
 	Status     models.ClaimStatus
 	RedeemedAt time.Time
 	FulfilledAt *time.Time
 	ResolvedAt  *time.Time
 	GiverUsername string
+}
+
+type RewardClaimGiven struct {
+	ID		   	 	uuid.UUID
+	RewardID   	 	uuid.UUID
+	RedeemerID 	 	uuid.UUID
+	GiverID    	 	uuid.UUID
+	Price      	 	int
+	Status     	 	models.ClaimStatus
+	RedeemedAt 	 	time.Time
+	FulfilledAt 	*time.Time
+	ResolvedAt  	*time.Time
+	RedeemerUsername string
 }
 
 type UserService interface {
@@ -53,16 +66,18 @@ type TransactionService interface {
 type Service interface {
 	Create(ctx context.Context, input CreateRewardInput) (*models.Reward, error)
 	Redeem(ctx context.Context, rewardID uuid.UUID, redeemerID uuid.UUID) (*models.Reward, error)
-	Cancel(ctx context.Context, rewardID uuid.UUID, callerID uuid.UUID) (*models.Reward, error)
+	GetByID(rewardID uuid.UUID, callerID uuid.UUID) (*models.Reward, error)
+	UpdateStock(ctx context.Context, rewardID uuid.UUID, callerID uuid.UUID, stock int) (*models.Reward, error)
 	GetShopByGiver(callerID uuid.UUID, giverID uuid.UUID, availableOnly bool) ([]models.Reward, error)
-	GetClaimsGivenByID(giverID uuid.UUID) ([]models.RewardClaim, error)
+	GetClaimsGivenByID(giverID uuid.UUID, before *time.Time, limit int) ([]RewardClaimGiven, error)
+	GetClaimsForReward(rewardID uuid.UUID, callerID uuid.UUID, before *time.Time, limit int) ([]RewardClaimGiven, error)
 
 	MarkClaimFulfilled(claimID uuid.UUID, callerID uuid.UUID) (*models.RewardClaim, error)
 	MarkClaimRefundRequested(claimID uuid.UUID, callerID uuid.UUID, reason string) (*models.RewardClaim, error)
 	MarkClaimRefunded(claimID uuid.UUID, callerID uuid.UUID) (*models.RewardClaim, error)
 
 	GetClaimByID(claimID uuid.UUID) (*models.RewardClaim, error)
-	GetClaimHistory(redeemerID uuid.UUID) ([]RewardClaimHistory, error)
+	GetClaimHistory(redeemerID uuid.UUID, before *time.Time, limit int) ([]RewardClaimHistory, error)
 	GetClaimsByGiver(giverID uuid.UUID) ([]models.RewardClaim, error)
 }
 
@@ -185,26 +200,39 @@ func (s *service) Redeem(ctx context.Context, rewardID uuid.UUID, redeemerID uui
 	return reward, nil
 }
 
-func (s *service) Cancel(ctx context.Context, rewardID uuid.UUID, callerID uuid.UUID) (*models.Reward, error) {
+func (s *service) GetByID(rewardID uuid.UUID, callerID uuid.UUID) (*models.Reward, error) {
 	reward, err := s.repo.FindByID(rewardID)
 	if err != nil {
 		return nil, &httputil.ServiceError{Code: http.StatusNotFound, Message: "Reward not found"}
 	}
 
 	if reward.RewardGiverID != callerID {
-		return nil, &httputil.ServiceError{Code: http.StatusForbidden, Message: "Only the reward giver can cancel it"}
+		return nil, &httputil.ServiceError{Code: http.StatusForbidden, Message: "You do not have access to this reward"}
 	}
 
-	if reward.Stock <= 0 {
-		return nil, &httputil.ServiceError{Code: http.StatusBadRequest, Message: "Reward has already been fully redeemed"}
+	return reward, nil
+}
+
+func (s *service) UpdateStock(ctx context.Context, rewardID uuid.UUID, callerID uuid.UUID, stock int) (*models.Reward, error) {
+	if stock < 0 {
+		return nil, &httputil.ServiceError{Code: http.StatusBadRequest, Message: "Stock cannot be negative"}
 	}
 
-	reward.Stock = 0
-	reward.IsAvailable = false
+	reward, err := s.repo.FindByID(rewardID)
+	if err != nil {
+		return nil, &httputil.ServiceError{Code: http.StatusNotFound, Message: "Reward not found"}
+	}
+
+	if reward.RewardGiverID != callerID {
+		return nil, &httputil.ServiceError{Code: http.StatusForbidden, Message: "Only the reward giver can update its stock"}
+	}
+
+	reward.Stock = stock
+	reward.IsAvailable = stock > 0
+
 	if err := s.repo.Save(reward); err != nil {
-		return nil, &httputil.ServiceError{Code: http.StatusInternalServerError, Message: "Failed to cancel reward"}
+		return nil, &httputil.ServiceError{Code: http.StatusInternalServerError, Message: "Failed to update stock"}
 	}
-
 
 	return reward, nil
 }
@@ -227,12 +255,94 @@ func (s *service) GetShopByGiver(callerID uuid.UUID, giverID uuid.UUID, availabl
 	return rewards, nil
 }
 
-func (s *service) GetClaimsGivenByID(giverID uuid.UUID) ([]models.RewardClaim, error) {
-	rewards, err := s.repo.FindClaimsGivenByID(giverID)
-	if err != nil {
-		return nil, &httputil.ServiceError{Code: http.StatusInternalServerError, Message: "Failed to fetch rewards"}
+func clampClaimsLimit(limit int) int {
+	if limit <= 0 {
+		return 20
 	}
-	return rewards, nil
+	if limit > 50 {
+		return 50
+	}
+	return limit
+}
+
+func (s *service) enrichClaimsWithRedeemerUsernames(claims []models.RewardClaim) ([]RewardClaimGiven, error) {
+	if len(claims) == 0 {
+		return []RewardClaimGiven{}, nil
+	}
+
+	uniqueRedeemerIDs := make(map[uuid.UUID]struct{})
+	var redeemerIDs []uuid.UUID
+
+	for _, claim := range claims {
+		if _, exists := uniqueRedeemerIDs[claim.RedeemerID]; !exists {
+			uniqueRedeemerIDs[claim.RedeemerID] = struct{}{}
+			redeemerIDs = append(redeemerIDs, claim.RedeemerID)
+		}
+	}
+
+	users, err := s.userService.GetByIDs(redeemerIDs)
+	if err != nil {
+		return nil, &httputil.ServiceError{Code: http.StatusInternalServerError, Message: "Failed to fetch user details"}
+	}
+
+	redeemerUsernameMap := make(map[uuid.UUID]string)
+	for _, user := range users {
+		redeemerUsernameMap[user.ID] = user.Username
+	}
+
+	given := make([]RewardClaimGiven, len(claims))
+	for i, claim := range claims {
+		redeemerUsername, exists := redeemerUsernameMap[claim.RedeemerID]
+		if !exists {
+			redeemerUsername = "Unknown"
+		}
+
+		given[i] = RewardClaimGiven{
+			ID:               claim.ID,
+			RewardID:         claim.RewardID,
+			RedeemerID:       claim.RedeemerID,
+			GiverID:          claim.GiverID,
+			Price:            claim.Price,
+			Status:           claim.Status,
+			RedeemedAt:       claim.RedeemedAt,
+			FulfilledAt:      claim.FulfilledAt,
+			ResolvedAt:       claim.ResolvedAt,
+			RedeemerUsername: redeemerUsername,
+		}
+	}
+
+	return given, nil
+}
+
+func (s *service) GetClaimsGivenByID(giverID uuid.UUID, before *time.Time, limit int) ([]RewardClaimGiven, error) {
+	limit = clampClaimsLimit(limit)
+
+	claims, err := s.repo.FindClaimsGivenByID(giverID, before, limit)
+	if err != nil {
+		return nil, &httputil.ServiceError{Code: http.StatusInternalServerError, Message: "Failed to fetch claims"}
+	}
+
+	return s.enrichClaimsWithRedeemerUsernames(claims)
+}
+
+func (s *service) GetClaimsForReward(rewardID uuid.UUID, callerID uuid.UUID, before *time.Time, limit int) ([]RewardClaimGiven, error) {
+	reward, err := s.repo.FindByID(rewardID)
+	if err != nil {
+		return nil, &httputil.ServiceError{Code: http.StatusNotFound, Message: "Reward not found"}
+	}
+
+	if reward.RewardGiverID != callerID {
+		return nil, &httputil.ServiceError{Code: http.StatusForbidden, Message: "You do not have access to this reward's claims"}
+	}
+
+	limit = clampClaimsLimit(limit)
+
+	claims, err := s.repo.FindClaimsByReward(rewardID, before, limit)
+	if err != nil {
+		return nil, &httputil.ServiceError{Code: http.StatusInternalServerError, Message: "Failed to fetch claims"}
+	}
+
+	return s.enrichClaimsWithRedeemerUsernames(claims)
 }
 
 func (s *service) MarkClaimFulfilled(claimID uuid.UUID, callerID uuid.UUID) (*models.RewardClaim, error) {
@@ -271,7 +381,7 @@ func (s *service) MarkClaimRefundRequested(claimID uuid.UUID, callerID uuid.UUID
 	}
 
 	if claim.Status != models.ClaimStatusPending {
-		return nil, &httputil.ServiceError{Code: http.StatusBadRequest, Message: "Claim is not in a fulfilled state"}
+		return nil, &httputil.ServiceError{Code: http.StatusBadRequest, Message: "Claim is not in a pending state"}
 	}
 
 	claim.Status = models.ClaimStatusRefundRequested
@@ -322,8 +432,10 @@ func (s *service) GetClaimByID(claimID uuid.UUID) (*models.RewardClaim, error) {
 	return claim, nil
 }
 
-func (s *service) GetClaimHistory(redeemerID uuid.UUID) ([]RewardClaimHistory, error) {
-	claims, err := s.repo.FindClaimsByRedeemer(redeemerID)
+func (s *service) GetClaimHistory(redeemerID uuid.UUID, before *time.Time, limit int) ([]RewardClaimHistory, error) {
+	limit = clampClaimsLimit(limit)
+
+	claims, err := s.repo.FindClaimsByRedeemer(redeemerID, before, limit)
 	if err != nil {
 		return nil, &httputil.ServiceError{Code: http.StatusInternalServerError, Message: "Failed to fetch claims"}
 	}

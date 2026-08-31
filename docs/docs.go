@@ -1251,14 +1251,37 @@ const docTemplate = `{
                 "tags": [
                     "Rewards"
                 ],
-                "summary": "List of rewards I have given",
+                "summary": "List of reward claims made against my rewards (as the giver)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Only return claims older than this RFC3339 timestamp (pagination cursor)",
+                        "name": "before",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Max claims to return (default 20, capped at 50)",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/models.Reward"
+                                "$ref": "#/definitions/reward.RewardClaimGivenResponse"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
                             }
                         }
                     },
@@ -1288,6 +1311,20 @@ const docTemplate = `{
                     "Rewards"
                 ],
                 "summary": "List rewards I have redeemed (my claim history)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Only return claims older than this RFC3339 timestamp (pagination cursor)",
+                        "name": "before",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Max claims to return (default 20, capped at 50)",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -1295,6 +1332,15 @@ const docTemplate = `{
                             "type": "array",
                             "items": {
                                 "$ref": "#/definitions/reward.RewardClaimHistoryResponse"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
                             }
                         }
                     },
@@ -1658,8 +1704,8 @@ const docTemplate = `{
                 }
             }
         },
-        "/rewards/{rewardId}/cancel": {
-            "patch": {
+        "/rewards/{rewardId}": {
+            "get": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -1671,7 +1717,7 @@ const docTemplate = `{
                 "tags": [
                     "Rewards"
                 ],
-                "summary": "Cancel an available reward",
+                "summary": "Get a reward I own by ID",
                 "parameters": [
                     {
                         "type": "string",
@@ -1686,6 +1732,81 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/models.Reward"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/rewards/{rewardId}/claims": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Rewards"
+                ],
+                "summary": "List claims made against a specific reward I own",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Reward ID (UUID)",
+                        "name": "rewardId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Only return claims older than this RFC3339 timestamp (pagination cursor)",
+                        "name": "before",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Max claims to return (default 20, capped at 50)",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/reward.RewardClaimGivenResponse"
+                            }
                         }
                     },
                     "400": {
@@ -1739,6 +1860,78 @@ const docTemplate = `{
                         "name": "rewardId",
                         "in": "path",
                         "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.Reward"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/rewards/{rewardId}/stock": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Rewards"
+                ],
+                "summary": "Update a reward's stock (also flips availability accordingly)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Reward ID (UUID)",
+                        "name": "rewardId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "New stock amount",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/reward.UpdateRewardStockRequest"
+                        }
                     }
                 ],
                 "responses": {
@@ -2360,6 +2553,9 @@ const docTemplate = `{
                 "redeemedAt": {
                     "type": "string"
                 },
+                "redeemerId": {
+                    "type": "string"
+                },
                 "refundReason": {
                     "type": "string"
                 },
@@ -2371,9 +2567,6 @@ const docTemplate = `{
                 },
                 "status": {
                     "$ref": "#/definitions/models.ClaimStatus"
-                },
-                "userId": {
-                    "type": "string"
                 }
             }
         },
@@ -2501,6 +2694,41 @@ const docTemplate = `{
                 }
             }
         },
+        "reward.RewardClaimGivenResponse": {
+            "type": "object",
+            "properties": {
+                "fulfilledAt": {
+                    "type": "string"
+                },
+                "giverId": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "price": {
+                    "type": "integer"
+                },
+                "redeemedAt": {
+                    "type": "string"
+                },
+                "redeemerId": {
+                    "type": "string"
+                },
+                "redeemerUsername": {
+                    "type": "string"
+                },
+                "resolvedAt": {
+                    "type": "string"
+                },
+                "rewardId": {
+                    "type": "string"
+                },
+                "status": {
+                    "$ref": "#/definitions/models.ClaimStatus"
+                }
+            }
+        },
         "reward.RewardClaimHistoryResponse": {
             "type": "object",
             "properties": {
@@ -2533,6 +2761,15 @@ const docTemplate = `{
                 },
                 "status": {
                     "$ref": "#/definitions/models.ClaimStatus"
+                }
+            }
+        },
+        "reward.UpdateRewardStockRequest": {
+            "type": "object",
+            "properties": {
+                "stock": {
+                    "type": "integer",
+                    "minimum": 0
                 }
             }
         },

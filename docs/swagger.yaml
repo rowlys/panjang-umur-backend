@@ -221,6 +221,8 @@ definitions:
         type: integer
       redeemedAt:
         type: string
+      redeemerId:
+        type: string
       refundReason:
         type: string
       resolvedAt:
@@ -229,8 +231,6 @@ definitions:
         type: string
       status:
         $ref: '#/definitions/models.ClaimStatus'
-      userId:
-        type: string
     type: object
   models.RewardVisibilityMode:
     enum:
@@ -316,6 +316,29 @@ definitions:
     - stock
     - title
     type: object
+  reward.RewardClaimGivenResponse:
+    properties:
+      fulfilledAt:
+        type: string
+      giverId:
+        type: string
+      id:
+        type: string
+      price:
+        type: integer
+      redeemedAt:
+        type: string
+      redeemerId:
+        type: string
+      redeemerUsername:
+        type: string
+      resolvedAt:
+        type: string
+      rewardId:
+        type: string
+      status:
+        $ref: '#/definitions/models.ClaimStatus'
+    type: object
   reward.RewardClaimHistoryResponse:
     properties:
       fulfilledAt:
@@ -338,6 +361,12 @@ definitions:
         type: string
       status:
         $ref: '#/definitions/models.ClaimStatus'
+    type: object
+  reward.UpdateRewardStockRequest:
+    properties:
+      stock:
+        minimum: 0
+        type: integer
     type: object
   user.LoginInput:
     properties:
@@ -1158,8 +1187,8 @@ paths:
       summary: Create a reward in my shop
       tags:
       - Rewards
-  /rewards/{rewardId}/cancel:
-    patch:
+  /rewards/{rewardId}:
+    get:
       parameters:
       - description: Reward ID (UUID)
         in: path
@@ -1193,7 +1222,56 @@ paths:
             type: object
       security:
       - BearerAuth: []
-      summary: Cancel an available reward
+      summary: Get a reward I own by ID
+      tags:
+      - Rewards
+  /rewards/{rewardId}/claims:
+    get:
+      parameters:
+      - description: Reward ID (UUID)
+        in: path
+        name: rewardId
+        required: true
+        type: string
+      - description: Only return claims older than this RFC3339 timestamp (pagination
+          cursor)
+        in: query
+        name: before
+        type: string
+      - description: Max claims to return (default 20, capped at 50)
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/reward.RewardClaimGivenResponse'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List claims made against a specific reward I own
       tags:
       - Rewards
   /rewards/{rewardId}/redeem:
@@ -1232,6 +1310,52 @@ paths:
       security:
       - BearerAuth: []
       summary: Redeem a reward using points
+      tags:
+      - Rewards
+  /rewards/{rewardId}/stock:
+    patch:
+      consumes:
+      - application/json
+      parameters:
+      - description: Reward ID (UUID)
+        in: path
+        name: rewardId
+        required: true
+        type: string
+      - description: New stock amount
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/reward.UpdateRewardStockRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Reward'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update a reward's stock (also flips availability accordingly)
       tags:
       - Rewards
   /rewards/claims/{claimId}/fulfill:
@@ -1375,6 +1499,16 @@ paths:
       - Rewards
   /rewards/claims/given:
     get:
+      parameters:
+      - description: Only return claims older than this RFC3339 timestamp (pagination
+          cursor)
+        in: query
+        name: before
+        type: string
+      - description: Max claims to return (default 20, capped at 50)
+        in: query
+        name: limit
+        type: integer
       produces:
       - application/json
       responses:
@@ -1382,8 +1516,14 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/models.Reward'
+              $ref: '#/definitions/reward.RewardClaimGivenResponse'
             type: array
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
         "500":
           description: Internal Server Error
           schema:
@@ -1392,11 +1532,21 @@ paths:
             type: object
       security:
       - BearerAuth: []
-      summary: List of rewards I have given
+      summary: List of reward claims made against my rewards (as the giver)
       tags:
       - Rewards
   /rewards/claims/me:
     get:
+      parameters:
+      - description: Only return claims older than this RFC3339 timestamp (pagination
+          cursor)
+        in: query
+        name: before
+        type: string
+      - description: Max claims to return (default 20, capped at 50)
+        in: query
+        name: limit
+        type: integer
       produces:
       - application/json
       responses:
@@ -1406,6 +1556,12 @@ paths:
             items:
               $ref: '#/definitions/reward.RewardClaimHistoryResponse'
             type: array
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
         "500":
           description: Internal Server Error
           schema:
