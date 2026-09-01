@@ -28,16 +28,34 @@ type SubmitChallengeRequest struct {
 	ProofImageID *uuid.UUID `json:"proofImageId,omitempty"`
 }
 
-type GetSubmissionsResponse struct {
-	ID          uuid.UUID          `json:"id"`
-	ChallengeID uuid.UUID          `json:"challengeId"`
-	UserID      uuid.UUID          `json:"userId"`
-	User        models.BareUserDTO `json:"user"`
-	ProofURL    *string            `json:"ProofURL,omitempty"`
-	PeriodStart time.Time          `json:"periodStart"`
-	Status      int                `json:"status"`
-	SubmittedAt time.Time          `gorm:"not null" json:"submittedAt"`
-	ApprovedAt  *time.Time         `json:"approvedAt"`
+type GetSubmissionsSubmittedResponse struct {
+	ID              uuid.UUID  `json:"id"`
+	ChallengeID     uuid.UUID  `json:"challengeId"`
+	ChallengeTitle  string     `json:"challengeTitle"`
+	ChallengePoints int        `json:"challengePoints"`
+	ChallengeType   int        `json:"challengeType"`
+	ChallengeStatus int        `json:"challengeStatus"`
+	ProofURL        *string    `json:"proofUrl,omitempty"`
+	PeriodStart     time.Time  `json:"periodStart"`
+	Status          int        `json:"status"`
+	SubmittedAt     time.Time  `json:"submittedAt"`
+	ApprovedAt      *time.Time `json:"approvedAt"`
+}
+
+type GetSubmissionsReceivedResponse struct {
+	ID              uuid.UUID          `json:"id"`
+	ChallengeID     uuid.UUID          `json:"challengeId"`
+	ChallengeTitle  string             `json:"challengeTitle"`
+	ChallengePoints int                `json:"challengePoints"`
+	ChallengeType   int                `json:"challengeType"`
+	ChallengeStatus int                `json:"challengeStatus"`
+	UserID          uuid.UUID          `json:"userId"`
+	User            models.BareUserDTO `json:"user"`
+	ProofURL        *string            `json:"proofUrl,omitempty"`
+	PeriodStart     time.Time          `json:"periodStart"`
+	Status          int                `json:"status"`
+	SubmittedAt     time.Time          `json:"submittedAt"`
+	ApprovedAt      *time.Time         `json:"approvedAt"`
 }
 
 type GetChallengeDetailResponse struct {
@@ -92,11 +110,9 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 
 	rg.PATCH("/:challengeId/submit", h.Submit)
 	rg.PATCH("/:challengeId/cancel", h.Cancel)
-	rg.GET("/submissions/me", h.GetMySubmissions)
-	rg.GET("/submissions/:challengeId", h.GetSubmissions)
+	rg.GET("/submissions/submitted", h.GetSubmissionsSubmitted)
+	rg.GET("/submissions/received", h.GetSubmissionsReceived)
 	rg.PATCH("/submissions/:submissionId/approve", h.Approve)
-	
-	rg.DELETE("/:challengeId", h.Delete)
 
 	rg.GET("/proof-upload-url", h.GenerateProofUploadURL)
 }
@@ -144,39 +160,6 @@ func (h *Handler) Create(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, challenge)
-}
-
-// Delete godoc
-// @Summary      Delete a challenge
-// @Tags         Challenges
-// @Produce      json
-// @Security     BearerAuth
-// @Param        challengeId  path      string  true  "Challenge ID (UUID)"
-// @Success      200          {object}  map[string]string
-// @Failure      400          {object}  map[string]string
-// @Failure      403          {object}  map[string]string
-// @Failure      404          {object}  map[string]string
-// @Router       /challenges/{challengeId} [delete]
-func (h *Handler) Delete(c *gin.Context) {
-	challengeId, err := uuid.Parse(c.Param("challengeId"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid challenge ID"})
-		return
-	}
-
-	userID, ok := httputil.ParseUserID(c)
-	if !ok {
-		return
-	}
-
-	err = h.service.Delete(c.Request.Context(), challengeId, userID)
-	if err != nil {
-		code, msg := httputil.ResolveServiceError(err)
-		c.JSON(code, gin.H{"error": msg})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"message": "Challenge deleted successfully"})
 }
 
 // Submit godoc
@@ -379,87 +362,170 @@ func (h *Handler) GetByID(c *gin.Context) {
 }
 
 
-// GetMySubmissions godoc
-// @Summary      List my challenge submissions (submit/approve status per challenge/period)
-// @Tags         Challenges
-// @Produce      json
-// @Security     BearerAuth
-// @Param        status  query     string  false  "Filter by submission status (submitted, approved, or all)"
-// @Success      200     {array}   models.ChallengeSubmission
-// @Failure      400     {object}  map[string]string
-// @Failure      403     {object}  map[string]string
-// @Failure      500     {object}  map[string]string
-// @Router       /challenges/submissions/me [get]
-func (h *Handler) GetMySubmissions(c *gin.Context) {
-	userID, ok := httputil.ParseUserID(c)
-	if !ok {
-		return
+func parseSubmissionsPageParams(c *gin.Context) (before *time.Time, limit int, ok bool) {
+	if raw := c.Query("before"); raw != "" {
+		parsed, err := time.Parse(time.RFC3339, raw)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid 'before' timestamp, expected RFC3339"})
+			return nil, 0, false
+		}
+		before = &parsed
 	}
 
-	statusFilter, ok := c.GetQuery("status")
-	if !ok {
-		statusFilter = ""
+	if raw := c.Query("limit"); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid 'limit', expected an integer"})
+			return nil, 0, false
+		}
+		limit = parsed
 	}
 
-	submissions, err := h.service.GetMySubmissions(userID, statusFilter)
-	if err != nil {
-		code, msg := httputil.ResolveServiceError(err)
-		c.JSON(code, gin.H{"error": msg})
-		return
-	}
-
-	c.JSON(http.StatusOK, submissions)
+	return before, limit, true
 }
 
-// GetSubmissions godoc
-// @Summary      List a challenge's submissions (submit/approve status per user/period)
+func parseOptionalUUIDQuery(c *gin.Context, key string) (*uuid.UUID, bool) {
+	raw := c.Query(key)
+	if raw == "" {
+		return nil, true
+	}
+	parsed, err := uuid.Parse(raw)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid '" + key + "'"})
+		return nil, false
+	}
+	return &parsed, true
+}
+
+// challengeInfoMap batch-loads challenge details for the given submissions' challenge IDs.
+func (h *Handler) challengeInfoMap(submissions []models.ChallengeSubmission) (map[uuid.UUID]models.Challenge, error) {
+	uniqueChallengeIDs := make(map[uuid.UUID]struct{})
+	var challengeIDs []uuid.UUID
+	for _, submission := range submissions {
+		if _, exists := uniqueChallengeIDs[submission.ChallengeID]; !exists {
+			uniqueChallengeIDs[submission.ChallengeID] = struct{}{}
+			challengeIDs = append(challengeIDs, submission.ChallengeID)
+		}
+	}
+
+	challenges, err := h.service.GetByIDs(challengeIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	challengeMap := make(map[uuid.UUID]models.Challenge)
+	for _, challenge := range challenges {
+		challengeMap[challenge.ID] = challenge
+	}
+	return challengeMap, nil
+}
+
+// GetSubmissionsSubmitted godoc
+// @Summary      List challenge submissions I've made, optionally narrowed to one challenge
 // @Tags         Challenges
 // @Produce      json
 // @Security     BearerAuth
-// @Param        challengeId  path      string  true   "Challenge ID (UUID)"
+// @Param        challengeId  query     string  false  "Only return submissions to this challenge (UUID)"
 // @Param        status       query     string  false  "Filter by submission status (submitted, approved, or all)"
 // @Param        before       query     string  false  "Only return submissions older than this RFC3339 timestamp (pagination cursor)"
 // @Param        limit        query     int     false  "Max submissions to return (default 20, capped at 50)"
-// @Success      200  {array}   models.ChallengeSubmission
+// @Success      200  {array}   GetSubmissionsSubmittedResponse
 // @Failure      400  {object}  map[string]string
-// @Failure      403  {object}  map[string]string
-// @Failure      404  {object}  map[string]string
-// @Router       /challenges/submissions/{challengeId} [get]
-func (h *Handler) GetSubmissions(c *gin.Context) {
-	id, err := uuid.Parse(c.Param("challengeId"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid challenge ID"})
+// @Failure      500  {object}  map[string]string
+// @Router       /challenges/submissions/submitted [get]
+func (h *Handler) GetSubmissionsSubmitted(c *gin.Context) {
+	userID, ok := httputil.ParseUserID(c)
+	if !ok {
 		return
 	}
 
-	userID, ok := httputil.ParseUserID(c)
+	challengeID, ok := parseOptionalUUIDQuery(c, "challengeId")
 	if !ok {
 		return
 	}
 
 	statusFilter := c.Query("status")
 
-	var before *time.Time
-	if raw := c.Query("before"); raw != "" {
-		parsed, err := time.Parse(time.RFC3339, raw)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid 'before' timestamp, expected RFC3339"})
-			return
-		}
-		before = &parsed
+	before, limit, ok := parseSubmissionsPageParams(c)
+	if !ok {
+		return
 	}
 
-	limit := 0
-	if raw := c.Query("limit"); raw != "" {
-		parsed, err := strconv.Atoi(raw)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid 'limit', expected an integer"})
-			return
-		}
-		limit = parsed
+	submissions, err := h.service.GetSubmissionsSubmitted(userID, challengeID, statusFilter, before, limit)
+	if err != nil {
+		code, msg := httputil.ResolveServiceError(err)
+		c.JSON(code, gin.H{"error": msg})
+		return
 	}
 
-	submissions, err := h.service.GetSubmissions(userID, id, statusFilter, before, limit)
+	challengeMap, err := h.challengeInfoMap(submissions)
+	if err != nil {
+		code, msg := httputil.ResolveServiceError(err)
+		c.JSON(code, gin.H{"error": msg})
+		return
+	}
+
+	response := make([]GetSubmissionsSubmittedResponse, len(submissions))
+	for i, submission := range submissions {
+		ch := challengeMap[submission.ChallengeID]
+		response[i] = GetSubmissionsSubmittedResponse{
+			ID:              submission.ID,
+			ChallengeID:     submission.ChallengeID,
+			ChallengeTitle:  ch.Title,
+			ChallengePoints: ch.Points,
+			ChallengeType:   int(ch.Type),
+			ChallengeStatus: int(ch.Status),
+			ProofURL:        h.service.GetProofURL(submission.ProofImageID),
+			PeriodStart:     submission.PeriodStart,
+			Status:          int(submission.Status),
+			SubmittedAt:     submission.SubmittedAt,
+			ApprovedAt:      submission.ApprovedAt,
+		}
+	}
+
+	c.JSON(http.StatusOK, response)
+}
+
+// GetSubmissionsReceived godoc
+// @Summary      List submissions made on challenges I created, optionally narrowed to one challenge
+// @Tags         Challenges
+// @Produce      json
+// @Security     BearerAuth
+// @Param        challengeId  query     string  false  "Only return submissions to this challenge (UUID)"
+// @Param        status       query     string  false  "Filter by submission status (submitted, approved, or all)"
+// @Param        before       query     string  false  "Only return submissions older than this RFC3339 timestamp (pagination cursor)"
+// @Param        limit        query     int     false  "Max submissions to return (default 20, capped at 50)"
+// @Success      200  {array}   GetSubmissionsReceivedResponse
+// @Failure      400  {object}  map[string]string
+// @Failure      403  {object}  map[string]string
+// @Failure      404  {object}  map[string]string
+// @Router       /challenges/submissions/received [get]
+func (h *Handler) GetSubmissionsReceived(c *gin.Context) {
+	userID, ok := httputil.ParseUserID(c)
+	if !ok {
+		return
+	}
+
+	challengeID, ok := parseOptionalUUIDQuery(c, "challengeId")
+	if !ok {
+		return
+	}
+
+	statusFilter := c.Query("status")
+
+	before, limit, ok := parseSubmissionsPageParams(c)
+	if !ok {
+		return
+	}
+
+	submissions, err := h.service.GetSubmissionsReceived(userID, challengeID, statusFilter, before, limit)
+	if err != nil {
+		code, msg := httputil.ResolveServiceError(err)
+		c.JSON(code, gin.H{"error": msg})
+		return
+	}
+
+	challengeMap, err := h.challengeInfoMap(submissions)
 	if err != nil {
 		code, msg := httputil.ResolveServiceError(err)
 		c.JSON(code, gin.H{"error": msg})
@@ -487,19 +553,24 @@ func (h *Handler) GetSubmissions(c *gin.Context) {
 		submitterMap[submitter.ID] = *submitter
 	}
 
-	response := []GetSubmissionsResponse{}
-	for _, submission := range submissions {
-		response = append(response, GetSubmissionsResponse{
-			ID:          submission.ID,
-			ChallengeID: submission.ChallengeID,
-			UserID:      submission.UserID,
-			User:        submitterMap[submission.UserID],
-			ProofURL:    h.service.GetProofURL(submission.ProofImageID),
-			PeriodStart: submission.PeriodStart,
-			Status:      int(submission.Status),
-			SubmittedAt: submission.SubmittedAt,
-			ApprovedAt:  submission.ApprovedAt,
-		})
+	response := make([]GetSubmissionsReceivedResponse, len(submissions))
+	for i, submission := range submissions {
+		ch := challengeMap[submission.ChallengeID]
+		response[i] = GetSubmissionsReceivedResponse{
+			ID:              submission.ID,
+			ChallengeID:     submission.ChallengeID,
+			ChallengeTitle:  ch.Title,
+			ChallengePoints: ch.Points,
+			ChallengeType:   int(ch.Type),
+			ChallengeStatus: int(ch.Status),
+			UserID:          submission.UserID,
+			User:            submitterMap[submission.UserID],
+			ProofURL:        h.service.GetProofURL(submission.ProofImageID),
+			PeriodStart:     submission.PeriodStart,
+			Status:          int(submission.Status),
+			SubmittedAt:     submission.SubmittedAt,
+			ApprovedAt:      submission.ApprovedAt,
+		}
 	}
 
 	c.JSON(http.StatusOK, response)

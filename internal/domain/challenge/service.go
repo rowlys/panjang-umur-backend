@@ -30,23 +30,30 @@ type FriendService interface {
 }
 
 type TransactionService interface {
-	RecordEarnedTx(db *gorm.DB, ownerID, giverID uuid.UUID, amount int, referenceID uuid.UUID) error
+	RecordEarnedTx(db *gorm.DB, ownerID, giverID uuid.UUID, amount int, referenceID uuid.UUID, referenceType models.TransactionReferenceType) error
 }
 
 type Service interface {
 	Create(ctx context.Context, input CreateChallengeInput) (*models.Challenge, error)
-	Delete(ctx context.Context, challengeID uuid.UUID, userID uuid.UUID) error
 	Submit(ctx context.Context, challengeID uuid.UUID, userID uuid.UUID, proofImageID *uuid.UUID) (*models.Challenge, error)
 	Approve(ctx context.Context, submissionID uuid.UUID, callerID uuid.UUID) (*models.ChallengeSubmission, error)
 	Cancel(ctx context.Context, challengeID uuid.UUID, callerID uuid.UUID) (*models.Challenge, error)
 	GetAll(callerID uuid.UUID, statuses []models.ChallengeStatus) ([]models.Challenge, error)
 	GetByID(callerID uuid.UUID, id uuid.UUID) (*models.Challenge, error)
+	GetByIDs(ids []uuid.UUID) ([]models.Challenge, error)
 	GetByAssignee(userID uuid.UUID) ([]models.Challenge, error)
 	GetByCreator(userID uuid.UUID, statuses []models.ChallengeStatus) ([]models.Challenge, error)
 
-	GetMySubmissions(callerID uuid.UUID, statusFilter string) ([]models.ChallengeSubmission, error)
-	GetSubmissions(callerID uuid.UUID, challengeID uuid.UUID, statusFilter string, before *time.Time, limit int) ([]models.ChallengeSubmission, error)
+	// GetSubmissionsSubmitted returns submissions callerID made, optionally narrowed to a single challenge.
+	GetSubmissionsSubmitted(callerID uuid.UUID, challengeID *uuid.UUID, statusFilter string, before *time.Time, limit int) ([]models.ChallengeSubmission, error)
+	// GetSubmissionsReceived returns submissions made on challenges callerID created,
+	// optionally narrowed to a single challenge (in which case callerID must be its creator).
+	GetSubmissionsReceived(callerID uuid.UUID, challengeID *uuid.UUID, statusFilter string, before *time.Time, limit int) ([]models.ChallengeSubmission, error)
 	GetMySubmissionStatus(callerID uuid.UUID, challenge *models.Challenge) (*models.SubmissionStatus, error)
+	// GetSubmissionContexts resolves History-ready context (challenge title,
+	// participant IDs) for the given submission IDs. Used by the transaction
+	// handler to enrich the ledger without importing this package.
+	GetSubmissionContexts(ids []uuid.UUID) ([]models.SubmissionContext, error)
 
 	GenerateProofUploadURL(ctx context.Context) (string, uuid.UUID, error)
 	GetProofURL(imageID *uuid.UUID) *string
@@ -133,26 +140,6 @@ func (s *service) Create(ctx context.Context, input CreateChallengeInput) (*mode
 		return nil, &httputil.ServiceError{Code: http.StatusInternalServerError, Message: "Failed to create challenge"}
 	}
 	return challenge, nil
-}
-
-func (s *service) Delete(ctx context.Context, challengeID uuid.UUID, userID uuid.UUID) error {
-	challenge, err := s.repo.FindByID(challengeID)
-	if err != nil {
-		return &httputil.ServiceError{Code: http.StatusNotFound, Message: "Challenge not found"}
-	}
-	
-	if challenge.CreatorID != userID {
-		return &httputil.ServiceError{Code: http.StatusForbidden, Message: "Only the challenge creator can delete it"}
-	}
-
-	if challenge.Status != models.StatusActive {
-		return &httputil.ServiceError{Code: http.StatusBadRequest, Message: "Only active challenges can be deleted"}
-	}
-
-	if err := s.repo.Delete(challenge); err != nil {
-		return &httputil.ServiceError{Code: http.StatusInternalServerError, Message: "Failed to delete challenge"}
-	}
-	return nil
 }
 
 func (s *service) Submit(ctx context.Context, challengeID uuid.UUID, userID uuid.UUID, proofImageID *uuid.UUID) (*models.Challenge, error) {
@@ -258,7 +245,7 @@ func (s *service) Approve(ctx context.Context, submissionID uuid.UUID, callerID 
 		if err := s.repo.SaveSubmissionTx(tx, submission); err != nil {
 			return err
 		}
-		if err := s.transactionService.RecordEarnedTx(tx, submission.UserID, challenge.CreatorID, challenge.Points, submission.ID); err != nil {
+		if err := s.transactionService.RecordEarnedTx(tx, submission.UserID, challenge.CreatorID, challenge.Points, submission.ID, models.ReferenceSubmission); err != nil {
 			return err
 		}
 
@@ -398,63 +385,112 @@ func (s *service) GetByCreator(userID uuid.UUID, statuses []models.ChallengeStat
 	return s.repo.FindByCreator(userID, statuses)
 }
 
-func (s *service) GetMySubmissions(callerID uuid.UUID, statusFilter string) ([]models.ChallengeSubmission, error) {
-	submissions, err := s.repo.FindSubmissionsByUser(callerID)
+func (s *service) GetByIDs(ids []uuid.UUID) ([]models.Challenge, error) {
+	challenges, err := s.repo.FindByIDs(ids)
 	if err != nil {
-		return nil, &httputil.ServiceError{Code: http.StatusInternalServerError, Message: "Failed to load submissions"}
+		return nil, &httputil.ServiceError{Code: http.StatusInternalServerError, Message: "Failed to fetch challenge details"}
 	}
-
-	if statusFilter != "approved" && statusFilter != "submitted" {
-		return submissions, nil
-	}
-
-
-	filtered := []models.ChallengeSubmission{}
-	switch statusFilter {
-	case "approved":
-		for _, sub := range submissions {
-			if sub.Status == models.SubmissionApproved {
-				filtered = append(filtered, sub)
-			}
-		}
-	case "submitted":
-		for _, sub := range submissions {
-			if sub.Status == models.SubmissionSubmitted {
-				filtered = append(filtered, sub)
-			}
-		}
-	}
-
-	return filtered, nil
+	return challenges, nil
 }
 
-func (s *service) GetSubmissions(callerID uuid.UUID, challengeID uuid.UUID, statusFilter string, before *time.Time, limit int) ([]models.ChallengeSubmission, error) {
-	challenge, err := s.GetByID(callerID, challengeID)
+func (s *service) GetSubmissionContexts(ids []uuid.UUID) ([]models.SubmissionContext, error) {
+	if len(ids) == 0 {
+		return []models.SubmissionContext{}, nil
+	}
+
+	submissions, err := s.repo.FindSubmissionsByIDs(ids)
 	if err != nil {
-		return nil, err
+		return nil, &httputil.ServiceError{Code: http.StatusInternalServerError, Message: "Failed to fetch submission details"}
 	}
 
-	if challenge.CreatorID != callerID {
-		return nil, &httputil.ServiceError{Code: http.StatusForbidden, Message: "You do not have access to this challenge's submissions"}
+	uniqueChallengeIDs := make(map[uuid.UUID]struct{})
+	var challengeIDs []uuid.UUID
+	for _, submission := range submissions {
+		if _, exists := uniqueChallengeIDs[submission.ChallengeID]; !exists {
+			uniqueChallengeIDs[submission.ChallengeID] = struct{}{}
+			challengeIDs = append(challengeIDs, submission.ChallengeID)
+		}
 	}
 
+	challenges, err := s.repo.FindByIDs(challengeIDs)
+	if err != nil {
+		return nil, &httputil.ServiceError{Code: http.StatusInternalServerError, Message: "Failed to fetch challenge details"}
+	}
+	challengeMap := make(map[uuid.UUID]models.Challenge)
+	for _, ch := range challenges {
+		challengeMap[ch.ID] = ch
+	}
+
+	contexts := make([]models.SubmissionContext, len(submissions))
+	for i, submission := range submissions {
+		ch := challengeMap[submission.ChallengeID]
+		contexts[i] = models.SubmissionContext{
+			SubmissionID:   submission.ID,
+			ChallengeID:    submission.ChallengeID,
+			ChallengeTitle: ch.Title,
+			SubmitterID:    submission.UserID,
+			CreatorID:      ch.CreatorID,
+		}
+	}
+	return contexts, nil
+}
+
+func clampSubmissionsLimit(limit int) int {
 	if limit <= 0 {
-		limit = 20
-	} else if limit > 50 {
-		limit = 50
+		return 20
 	}
+	if limit > 50 {
+		return 50
+	}
+	return limit
+}
 
-	var status *models.SubmissionStatus
+func parseSubmissionStatusFilter(statusFilter string) *models.SubmissionStatus {
 	switch statusFilter {
 	case "submitted":
 		submitted := models.SubmissionSubmitted
-		status = &submitted
+		return &submitted
 	case "approved":
 		approved := models.SubmissionApproved
-		status = &approved
+		return &approved
+	default:
+		return nil
+	}
+}
+
+// GetSubmissionsSubmitted returns submissions callerID made, optionally narrowed to a single challenge.
+func (s *service) GetSubmissionsSubmitted(callerID uuid.UUID, challengeID *uuid.UUID, statusFilter string, before *time.Time, limit int) ([]models.ChallengeSubmission, error) {
+	limit = clampSubmissionsLimit(limit)
+	status := parseSubmissionStatusFilter(statusFilter)
+
+	submissions, err := s.repo.FindSubmissionsSubmitted(callerID, challengeID, status, before, limit)
+	if err != nil {
+		return nil, &httputil.ServiceError{Code: http.StatusInternalServerError, Message: "Failed to load submissions"}
+	}
+	return submissions, nil
+}
+
+// GetSubmissionsReceived returns submissions made on challenges callerID created,
+// optionally narrowed to a single challenge (in which case callerID must be its creator).
+func (s *service) GetSubmissionsReceived(callerID uuid.UUID, challengeID *uuid.UUID, statusFilter string, before *time.Time, limit int) ([]models.ChallengeSubmission, error) {
+	if challengeID != nil {
+		challenge, err := s.GetByID(callerID, *challengeID)
+		if err != nil {
+			return nil, err
+		}
+		if challenge.CreatorID != callerID {
+			return nil, &httputil.ServiceError{Code: http.StatusForbidden, Message: "You do not have access to this challenge's submissions"}
+		}
 	}
 
-	return s.repo.FindSubmissionsByChallenge(challengeID, status, before, limit)
+	limit = clampSubmissionsLimit(limit)
+	status := parseSubmissionStatusFilter(statusFilter)
+
+	submissions, err := s.repo.FindSubmissionsReceived(callerID, challengeID, status, before, limit)
+	if err != nil {
+		return nil, &httputil.ServiceError{Code: http.StatusInternalServerError, Message: "Failed to load submissions"}
+	}
+	return submissions, nil
 }
 
 func (s *service) GenerateProofUploadURL(ctx context.Context) (string, uuid.UUID, error) {

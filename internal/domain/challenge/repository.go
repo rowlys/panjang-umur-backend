@@ -12,7 +12,6 @@ import (
 type Repository interface {
 	Create(challenge *models.Challenge) error
 	Save(challenge *models.Challenge) error
-	Delete(challenge *models.Challenge) error
 
 	CreateTx(tx *gorm.DB, challenge *models.Challenge) error
 	SaveTx(tx *gorm.DB, challenge *models.Challenge) error
@@ -21,6 +20,7 @@ type Repository interface {
 	FindAll(statuses []models.ChallengeStatus) ([]models.Challenge, error)
 	FindVisibleToUser(userID uuid.UUID, statuses []models.ChallengeStatus) ([]models.Challenge, error)
 	FindByID(id uuid.UUID) (*models.Challenge, error)
+	FindByIDs(ids []uuid.UUID) ([]models.Challenge, error)
 	FindByCreator(userID uuid.UUID, statuses []models.ChallengeStatus) ([]models.Challenge, error)
 	FindChallengesInvolvingUser(userID uuid.UUID) ([]models.Challenge, error)
 
@@ -36,9 +36,13 @@ type Repository interface {
 	FindSubmissionForPeriod(challengeID, userID uuid.UUID, periodStart time.Time) (*models.ChallengeSubmission, error)
 	FindSubmissionByID(id uuid.UUID) (*models.ChallengeSubmission, error)
 	FindLatestSubmission(challengeID, userID uuid.UUID) (*models.ChallengeSubmission, error)
-	FindSubmissionsByUser(userID uuid.UUID) ([]models.ChallengeSubmission, error)
-	FindSubmissionsByChallenge(challengeID uuid.UUID, statusFilter *models.SubmissionStatus, before *time.Time, limit int) ([]models.ChallengeSubmission, error)
+	// FindSubmissionsSubmitted returns submissions userID made, optionally narrowed to a single challenge.
+	FindSubmissionsSubmitted(userID uuid.UUID, challengeID *uuid.UUID, statusFilter *models.SubmissionStatus, before *time.Time, limit int) ([]models.ChallengeSubmission, error)
+	// FindSubmissionsReceived returns submissions made on challenges creatorID created,
+	// optionally narrowed to a single challenge.
+	FindSubmissionsReceived(creatorID uuid.UUID, challengeID *uuid.UUID, statusFilter *models.SubmissionStatus, before *time.Time, limit int) ([]models.ChallengeSubmission, error)
 	FindSubmissionsByUserAndChallenges(userID uuid.UUID, challengeIDs []uuid.UUID) ([]models.ChallengeSubmission, error)
+	FindSubmissionsByIDs(ids []uuid.UUID) ([]models.ChallengeSubmission, error)
 	CountAssigneesWithoutApprovedSubmission(tx *gorm.DB, challengeID uuid.UUID) (int64, error)
 }
 
@@ -56,10 +60,6 @@ func (r *repository) Create(challenge *models.Challenge) error {
 
 func (r *repository) Save(challenge *models.Challenge) error {
 	return r.db.Save(challenge).Error
-}
-
-func (r *repository) Delete(challenge *models.Challenge) error {
-	return r.db.Delete(challenge).Error
 }
 
 func (r *repository) CreateTx(tx *gorm.DB, challenge *models.Challenge) error {
@@ -108,6 +108,15 @@ func (r *repository) FindByID(id uuid.UUID) (*models.Challenge, error) {
 	var challenge models.Challenge
 	err := r.db.Where("id = ?", id).First(&challenge).Error
 	return &challenge, err
+}
+
+func (r *repository) FindByIDs(ids []uuid.UUID) ([]models.Challenge, error) {
+	var challenges []models.Challenge
+	if len(ids) == 0 {
+		return challenges, nil
+	}
+	err := r.db.Where("id IN ?", ids).Find(&challenges).Error
+	return challenges, err
 }
 
 func (r *repository) FindByCreator(userID uuid.UUID, statuses []models.ChallengeStatus) ([]models.Challenge, error) {
@@ -194,15 +203,12 @@ func (r *repository) FindLatestSubmission(challengeID, userID uuid.UUID) (*model
 	return &s, err
 }
 
-func (r *repository) FindSubmissionsByUser(userID uuid.UUID) ([]models.ChallengeSubmission, error) {
+func (r *repository) FindSubmissionsSubmitted(userID uuid.UUID, challengeID *uuid.UUID, statusFilter *models.SubmissionStatus, before *time.Time, limit int) ([]models.ChallengeSubmission, error) {
 	var submissions []models.ChallengeSubmission
-	err := r.db.Where("user_id = ?", userID).Find(&submissions).Error
-	return submissions, err
-}
-
-func (r *repository) FindSubmissionsByChallenge(challengeID uuid.UUID, statusFilter *models.SubmissionStatus, before *time.Time, limit int) ([]models.ChallengeSubmission, error) {
-	var submissions []models.ChallengeSubmission
-	query := r.db.Where("challenge_id = ?", challengeID)
+	query := r.db.Where("user_id = ?", userID)
+	if challengeID != nil {
+		query = query.Where("challenge_id = ?", *challengeID)
+	}
 	if statusFilter != nil {
 		query = query.Where("status = ?", *statusFilter)
 	}
@@ -213,11 +219,39 @@ func (r *repository) FindSubmissionsByChallenge(challengeID uuid.UUID, statusFil
 	return submissions, err
 }
 
+func (r *repository) FindSubmissionsReceived(creatorID uuid.UUID, challengeID *uuid.UUID, statusFilter *models.SubmissionStatus, before *time.Time, limit int) ([]models.ChallengeSubmission, error) {
+	var submissions []models.ChallengeSubmission
+	query := r.db.Model(&models.ChallengeSubmission{}).
+		Select("challenge_submissions.*").
+		Joins("JOIN challenges ON challenges.id = challenge_submissions.challenge_id").
+		Where("challenges.creator_id = ?", creatorID)
+	if challengeID != nil {
+		query = query.Where("challenge_submissions.challenge_id = ?", *challengeID)
+	}
+	if statusFilter != nil {
+		query = query.Where("challenge_submissions.status = ?", *statusFilter)
+	}
+	if before != nil {
+		query = query.Where("challenge_submissions.submitted_at < ?", *before)
+	}
+	err := query.Order("challenge_submissions.submitted_at desc").Limit(limit).Find(&submissions).Error
+	return submissions, err
+}
+
 func (r *repository) FindSubmissionsByUserAndChallenges(userID uuid.UUID, challengeIDs []uuid.UUID) ([]models.ChallengeSubmission, error) {
     var submissions []models.ChallengeSubmission
     err := r.db.Where("user_id = ? AND challenge_id IN ?", userID, challengeIDs).
         Find(&submissions).Error
     return submissions, err
+}
+
+func (r *repository) FindSubmissionsByIDs(ids []uuid.UUID) ([]models.ChallengeSubmission, error) {
+	var submissions []models.ChallengeSubmission
+	if len(ids) == 0 {
+		return submissions, nil
+	}
+	err := r.db.Where("id IN ?", ids).Find(&submissions).Error
+	return submissions, err
 }
 
 func (r *repository) CountAssigneesWithoutApprovedSubmission(tx *gorm.DB, challengeID uuid.UUID) (int64, error) {
