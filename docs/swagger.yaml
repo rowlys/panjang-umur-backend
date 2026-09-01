@@ -54,6 +54,60 @@ definitions:
       type:
         type: integer
     type: object
+  challenge.GetSubmissionsReceivedResponse:
+    properties:
+      approvedAt:
+        type: string
+      challengeId:
+        type: string
+      challengePoints:
+        type: integer
+      challengeStatus:
+        type: integer
+      challengeTitle:
+        type: string
+      challengeType:
+        type: integer
+      id:
+        type: string
+      periodStart:
+        type: string
+      proofUrl:
+        type: string
+      status:
+        type: integer
+      submittedAt:
+        type: string
+      user:
+        $ref: '#/definitions/models.BareUserDTO'
+      userId:
+        type: string
+    type: object
+  challenge.GetSubmissionsSubmittedResponse:
+    properties:
+      approvedAt:
+        type: string
+      challengeId:
+        type: string
+      challengePoints:
+        type: integer
+      challengeStatus:
+        type: integer
+      challengeTitle:
+        type: string
+      challengeType:
+        type: integer
+      id:
+        type: string
+      periodStart:
+        type: string
+      proofUrl:
+        type: string
+      status:
+        type: integer
+      submittedAt:
+        type: string
+    type: object
   challenge.SubmitChallengeRequest:
     properties:
       proofImageId:
@@ -248,31 +302,6 @@ definitions:
     x-enum-varnames:
     - SubmissionSubmitted
     - SubmissionApproved
-  models.Transaction:
-    properties:
-      amount:
-        type: integer
-      giverId:
-        type: string
-      id:
-        type: string
-      referenceId:
-        type: string
-      timestamp:
-        type: string
-      type:
-        $ref: '#/definitions/models.TransactionType'
-      userId:
-        type: string
-    type: object
-  models.TransactionType:
-    enum:
-    - 0
-    - 1
-    type: integer
-    x-enum-varnames:
-    - Earned
-    - Spent
   models.User:
     properties:
       createdAt:
@@ -336,10 +365,12 @@ definitions:
         type: string
       rewardId:
         type: string
+      rewardTitle:
+        type: string
       status:
         $ref: '#/definitions/models.ClaimStatus'
     type: object
-  reward.RewardClaimHistoryResponse:
+  reward.RewardClaimRedeemedResponse:
     properties:
       fulfilledAt:
         type: string
@@ -359,6 +390,8 @@ definitions:
         type: string
       rewardId:
         type: string
+      rewardTitle:
+        type: string
       status:
         $ref: '#/definitions/models.ClaimStatus'
     type: object
@@ -366,6 +399,31 @@ definitions:
     properties:
       stock:
         minimum: 0
+        type: integer
+    type: object
+  transaction.TransactionResponse:
+    properties:
+      amount:
+        type: integer
+      counterpartyUsername:
+        type: string
+      id:
+        type: string
+      referenceId:
+        type: string
+      referenceType:
+        type: integer
+      role:
+        description: |-
+          Role is "owner" if this transaction affected the caller's own balance,
+          or "giver" if it happened within the caller's point economy (e.g. a
+          friend spending against the caller's reward).
+        type: string
+      timestamp:
+        type: string
+      title:
+        type: string
+      type:
         type: integer
     type: object
   user.LoginInput:
@@ -539,46 +597,6 @@ paths:
       security:
       - BearerAuth: []
       summary: Create a challenge for one or more friends
-      tags:
-      - Challenges
-  /challenges/{challengeId}:
-    delete:
-      parameters:
-      - description: Challenge ID (UUID)
-        in: path
-        name: challengeId
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "400":
-          description: Bad Request
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "403":
-          description: Forbidden
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "404":
-          description: Not Found
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      security:
-      - BearerAuth: []
-      summary: Delete a challenge
       tags:
       - Challenges
   /challenges/{challengeId}/cancel:
@@ -763,59 +781,6 @@ paths:
       summary: Generate a presigned URL for uploading a proof image to S3
       tags:
       - Challenges
-  /challenges/submissions/{challengeId}:
-    get:
-      parameters:
-      - description: Challenge ID (UUID)
-        in: path
-        name: challengeId
-        required: true
-        type: string
-      - description: Filter by submission status (submitted, approved, or all)
-        in: query
-        name: status
-        type: string
-      - description: Only return submissions older than this RFC3339 timestamp (pagination
-          cursor)
-        in: query
-        name: before
-        type: string
-      - description: Max submissions to return (default 20, capped at 50)
-        in: query
-        name: limit
-        type: integer
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            items:
-              $ref: '#/definitions/models.ChallengeSubmission'
-            type: array
-        "400":
-          description: Bad Request
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "403":
-          description: Forbidden
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "404":
-          description: Not Found
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      security:
-      - BearerAuth: []
-      summary: List a challenge's submissions (submit/approve status per user/period)
-      tags:
-      - Challenges
   /challenges/submissions/{submissionId}/approve:
     patch:
       parameters:
@@ -854,13 +819,26 @@ paths:
       summary: Approve a submitted challenge submission and award points to that user
       tags:
       - Challenges
-  /challenges/submissions/me:
+  /challenges/submissions/received:
     get:
       parameters:
+      - description: Only return submissions to this challenge (UUID)
+        in: query
+        name: challengeId
+        type: string
       - description: Filter by submission status (submitted, approved, or all)
         in: query
         name: status
         type: string
+      - description: Only return submissions older than this RFC3339 timestamp (pagination
+          cursor)
+        in: query
+        name: before
+        type: string
+      - description: Max submissions to return (default 20, capped at 50)
+        in: query
+        name: limit
+        type: integer
       produces:
       - application/json
       responses:
@@ -868,7 +846,7 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/models.ChallengeSubmission'
+              $ref: '#/definitions/challenge.GetSubmissionsReceivedResponse'
             type: array
         "400":
           description: Bad Request
@@ -882,6 +860,53 @@ paths:
             additionalProperties:
               type: string
             type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List submissions made on challenges I created, optionally narrowed
+        to one challenge
+      tags:
+      - Challenges
+  /challenges/submissions/submitted:
+    get:
+      parameters:
+      - description: Only return submissions to this challenge (UUID)
+        in: query
+        name: challengeId
+        type: string
+      - description: Filter by submission status (submitted, approved, or all)
+        in: query
+        name: status
+        type: string
+      - description: Only return submissions older than this RFC3339 timestamp (pagination
+          cursor)
+        in: query
+        name: before
+        type: string
+      - description: Max submissions to return (default 20, capped at 50)
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/challenge.GetSubmissionsSubmittedResponse'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
         "500":
           description: Internal Server Error
           schema:
@@ -890,7 +915,7 @@ paths:
             type: object
       security:
       - BearerAuth: []
-      summary: List my challenge submissions (submit/approve status per challenge/period)
+      summary: List challenge submissions I've made, optionally narrowed to one challenge
       tags:
       - Challenges
   /chat/{friendId}/messages:
@@ -1225,55 +1250,6 @@ paths:
       summary: Get a reward I own by ID
       tags:
       - Rewards
-  /rewards/{rewardId}/claims:
-    get:
-      parameters:
-      - description: Reward ID (UUID)
-        in: path
-        name: rewardId
-        required: true
-        type: string
-      - description: Only return claims older than this RFC3339 timestamp (pagination
-          cursor)
-        in: query
-        name: before
-        type: string
-      - description: Max claims to return (default 20, capped at 50)
-        in: query
-        name: limit
-        type: integer
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            items:
-              $ref: '#/definitions/reward.RewardClaimGivenResponse'
-            type: array
-        "400":
-          description: Bad Request
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "403":
-          description: Forbidden
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "404":
-          description: Not Found
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      security:
-      - BearerAuth: []
-      summary: List claims made against a specific reward I own
-      tags:
-      - Rewards
   /rewards/{rewardId}/redeem:
     patch:
       parameters:
@@ -1500,6 +1476,10 @@ paths:
   /rewards/claims/given:
     get:
       parameters:
+      - description: Only return claims against this reward (UUID)
+        in: query
+        name: rewardId
+        type: string
       - description: Only return claims older than this RFC3339 timestamp (pagination
           cursor)
         in: query
@@ -1524,20 +1504,31 @@ paths:
             additionalProperties:
               type: string
             type: object
-        "500":
-          description: Internal Server Error
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
           schema:
             additionalProperties:
               type: string
             type: object
       security:
       - BearerAuth: []
-      summary: List of reward claims made against my rewards (as the giver)
+      summary: List claims made against my rewards (as the giver), optionally narrowed
+        to one reward
       tags:
       - Rewards
-  /rewards/claims/me:
+  /rewards/claims/redeemed:
     get:
       parameters:
+      - description: Only return claims against this giver's rewards (UUID)
+        in: query
+        name: giverId
+        type: string
       - description: Only return claims older than this RFC3339 timestamp (pagination
           cursor)
         in: query
@@ -1554,7 +1545,7 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/reward.RewardClaimHistoryResponse'
+              $ref: '#/definitions/reward.RewardClaimRedeemedResponse'
             type: array
         "400":
           description: Bad Request
@@ -1570,7 +1561,7 @@ paths:
             type: object
       security:
       - BearerAuth: []
-      summary: List rewards I have redeemed (my claim history)
+      summary: List rewards I have redeemed, optionally narrowed to one giver
       tags:
       - Rewards
   /rewards/shop/{giverId}:
@@ -1680,6 +1671,20 @@ paths:
       - Transactions
   /transactions/me:
     get:
+      parameters:
+      - description: 'Only return transactions of this type: ''rewards'' or ''challenges'''
+        in: query
+        name: type
+        type: string
+      - description: Only return transactions older than this RFC3339 timestamp (pagination
+          cursor)
+        in: query
+        name: before
+        type: string
+      - description: Max transactions to return (default 20, capped at 50)
+        in: query
+        name: limit
+        type: integer
       produces:
       - application/json
       responses:
@@ -1687,8 +1692,14 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/models.Transaction'
+              $ref: '#/definitions/transaction.TransactionResponse'
             type: array
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
         "500":
           description: Internal Server Error
           schema:
@@ -1697,7 +1708,7 @@ paths:
             type: object
       security:
       - BearerAuth: []
-      summary: Get my transaction history
+      summary: Get my transaction history (every point movement I took part in)
       tags:
       - Transactions
   /users/{userId}:

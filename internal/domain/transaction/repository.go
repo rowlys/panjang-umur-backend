@@ -2,6 +2,7 @@ package transaction
 
 import (
 	"errors"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/rowlys/panjang-umur-backend/internal/models"
@@ -15,7 +16,7 @@ type Repository interface {
 	GetBalance(ownerID, giverID uuid.UUID) (int, error)
 	GetBalanceTx(db *gorm.DB, ownerID, giverID uuid.UUID) (int, error)
 	FindBalancesByOwner(ownerID uuid.UUID) ([]models.UserPointBalance, error)
-	FindByOwner(ownerID uuid.UUID) ([]models.Transaction, error)
+	FindByParticipant(userID uuid.UUID, referenceType *models.TransactionReferenceType, before *time.Time, limit int) ([]models.Transaction, error)
 }
 
 type repository struct {
@@ -66,8 +67,15 @@ func (r *repository) FindBalancesByOwner(ownerID uuid.UUID) ([]models.UserPointB
 	return balances, err
 }
 
-func (r *repository) FindByOwner(ownerID uuid.UUID) ([]models.Transaction, error) {
+func (r *repository) FindByParticipant(userID uuid.UUID, referenceType *models.TransactionReferenceType, before *time.Time, limit int) ([]models.Transaction, error) {
 	var txs []models.Transaction
-	err := r.db.Where("user_id = ?", ownerID).Order("timestamp desc").Find(&txs).Error
+	q := r.db.Where("user_id = ? OR giver_id = ?", userID, userID)
+	if referenceType != nil {
+		q = q.Where("reference_type = ?", *referenceType)
+	}
+	if before != nil {
+		q = q.Where("timestamp < ?", *before)
+	}
+	err := q.Order("timestamp desc").Limit(limit).Find(&txs).Error
 	return txs, err
 }

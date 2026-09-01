@@ -326,7 +326,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/challenges/submissions/me": {
+        "/challenges/submissions/received": {
             "get": {
                 "security": [
                     {
@@ -339,76 +339,13 @@ const docTemplate = `{
                 "tags": [
                     "Challenges"
                 ],
-                "summary": "List my challenge submissions (submit/approve status per challenge/period)",
+                "summary": "List submissions made on challenges I created, optionally narrowed to one challenge",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Filter by submission status (submitted, approved, or all)",
-                        "name": "status",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/models.ChallengeSubmission"
-                            }
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/challenges/submissions/{challengeId}": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Challenges"
-                ],
-                "summary": "List a challenge's submissions (submit/approve status per user/period)",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Challenge ID (UUID)",
+                        "description": "Only return submissions to this challenge (UUID)",
                         "name": "challengeId",
-                        "in": "path",
-                        "required": true
+                        "in": "query"
                     },
                     {
                         "type": "string",
@@ -435,7 +372,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/models.ChallengeSubmission"
+                                "$ref": "#/definitions/challenge.GetSubmissionsReceivedResponse"
                             }
                         }
                     },
@@ -459,6 +396,77 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/challenges/submissions/submitted": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Challenges"
+                ],
+                "summary": "List challenge submissions I've made, optionally narrowed to one challenge",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Only return submissions to this challenge (UUID)",
+                        "name": "challengeId",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by submission status (submitted, approved, or all)",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Only return submissions older than this RFC3339 timestamp (pagination cursor)",
+                        "name": "before",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Max submissions to return (default 20, capped at 50)",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/challenge.GetSubmissionsSubmittedResponse"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -497,69 +505,6 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/models.ChallengeSubmission"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/challenges/{challengeId}": {
-            "delete": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Challenges"
-                ],
-                "summary": "Delete a challenge",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Challenge ID (UUID)",
-                        "name": "challengeId",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
                         }
                     },
                     "400": {
@@ -1251,8 +1196,14 @@ const docTemplate = `{
                 "tags": [
                     "Rewards"
                 ],
-                "summary": "List of reward claims made against my rewards (as the giver)",
+                "summary": "List claims made against my rewards (as the giver), optionally narrowed to one reward",
                 "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Only return claims against this reward (UUID)",
+                        "name": "rewardId",
+                        "in": "query"
+                    },
                     {
                         "type": "string",
                         "description": "Only return claims older than this RFC3339 timestamp (pagination cursor)",
@@ -1285,8 +1236,17 @@ const docTemplate = `{
                             }
                         }
                     },
-                    "500": {
-                        "description": "Internal Server Error",
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -1297,7 +1257,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/rewards/claims/me": {
+        "/rewards/claims/redeemed": {
             "get": {
                 "security": [
                     {
@@ -1310,8 +1270,14 @@ const docTemplate = `{
                 "tags": [
                     "Rewards"
                 ],
-                "summary": "List rewards I have redeemed (my claim history)",
+                "summary": "List rewards I have redeemed, optionally narrowed to one giver",
                 "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Only return claims against this giver's rewards (UUID)",
+                        "name": "giverId",
+                        "in": "query"
+                    },
                     {
                         "type": "string",
                         "description": "Only return claims older than this RFC3339 timestamp (pagination cursor)",
@@ -1331,7 +1297,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/reward.RewardClaimHistoryResponse"
+                                "$ref": "#/definitions/reward.RewardClaimRedeemedResponse"
                             }
                         }
                     },
@@ -1764,81 +1730,6 @@ const docTemplate = `{
                 }
             }
         },
-        "/rewards/{rewardId}/claims": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Rewards"
-                ],
-                "summary": "List claims made against a specific reward I own",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Reward ID (UUID)",
-                        "name": "rewardId",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Only return claims older than this RFC3339 timestamp (pagination cursor)",
-                        "name": "before",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "description": "Max claims to return (default 20, capped at 50)",
-                        "name": "limit",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/reward.RewardClaimGivenResponse"
-                            }
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
         "/rewards/{rewardId}/redeem": {
             "patch": {
                 "security": [
@@ -2020,14 +1911,43 @@ const docTemplate = `{
                 "tags": [
                     "Transactions"
                 ],
-                "summary": "Get my transaction history",
+                "summary": "Get my transaction history (every point movement I took part in)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Only return transactions of this type: 'rewards' or 'challenges'",
+                        "name": "type",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Only return transactions older than this RFC3339 timestamp (pagination cursor)",
+                        "name": "before",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Max transactions to return (default 20, capped at 50)",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/models.Transaction"
+                                "$ref": "#/definitions/transaction.TransactionResponse"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
                             }
                         }
                     },
@@ -2305,6 +2225,88 @@ const docTemplate = `{
                 },
                 "type": {
                     "type": "integer"
+                }
+            }
+        },
+        "challenge.GetSubmissionsReceivedResponse": {
+            "type": "object",
+            "properties": {
+                "approvedAt": {
+                    "type": "string"
+                },
+                "challengeId": {
+                    "type": "string"
+                },
+                "challengePoints": {
+                    "type": "integer"
+                },
+                "challengeStatus": {
+                    "type": "integer"
+                },
+                "challengeTitle": {
+                    "type": "string"
+                },
+                "challengeType": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "periodStart": {
+                    "type": "string"
+                },
+                "proofUrl": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "integer"
+                },
+                "submittedAt": {
+                    "type": "string"
+                },
+                "user": {
+                    "$ref": "#/definitions/models.BareUserDTO"
+                },
+                "userId": {
+                    "type": "string"
+                }
+            }
+        },
+        "challenge.GetSubmissionsSubmittedResponse": {
+            "type": "object",
+            "properties": {
+                "approvedAt": {
+                    "type": "string"
+                },
+                "challengeId": {
+                    "type": "string"
+                },
+                "challengePoints": {
+                    "type": "integer"
+                },
+                "challengeStatus": {
+                    "type": "integer"
+                },
+                "challengeTitle": {
+                    "type": "string"
+                },
+                "challengeType": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "periodStart": {
+                    "type": "string"
+                },
+                "proofUrl": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "integer"
+                },
+                "submittedAt": {
+                    "type": "string"
                 }
             }
         },
@@ -2592,43 +2594,6 @@ const docTemplate = `{
                 "SubmissionApproved"
             ]
         },
-        "models.Transaction": {
-            "type": "object",
-            "properties": {
-                "amount": {
-                    "type": "integer"
-                },
-                "giverId": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "referenceId": {
-                    "type": "string"
-                },
-                "timestamp": {
-                    "type": "string"
-                },
-                "type": {
-                    "$ref": "#/definitions/models.TransactionType"
-                },
-                "userId": {
-                    "type": "string"
-                }
-            }
-        },
-        "models.TransactionType": {
-            "type": "integer",
-            "enum": [
-                0,
-                1
-            ],
-            "x-enum-varnames": [
-                "Earned",
-                "Spent"
-            ]
-        },
         "models.User": {
             "type": "object",
             "properties": {
@@ -2724,12 +2689,15 @@ const docTemplate = `{
                 "rewardId": {
                     "type": "string"
                 },
+                "rewardTitle": {
+                    "type": "string"
+                },
                 "status": {
                     "$ref": "#/definitions/models.ClaimStatus"
                 }
             }
         },
-        "reward.RewardClaimHistoryResponse": {
+        "reward.RewardClaimRedeemedResponse": {
             "type": "object",
             "properties": {
                 "fulfilledAt": {
@@ -2759,6 +2727,9 @@ const docTemplate = `{
                 "rewardId": {
                     "type": "string"
                 },
+                "rewardTitle": {
+                    "type": "string"
+                },
                 "status": {
                     "$ref": "#/definitions/models.ClaimStatus"
                 }
@@ -2770,6 +2741,39 @@ const docTemplate = `{
                 "stock": {
                     "type": "integer",
                     "minimum": 0
+                }
+            }
+        },
+        "transaction.TransactionResponse": {
+            "type": "object",
+            "properties": {
+                "amount": {
+                    "type": "integer"
+                },
+                "counterpartyUsername": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "referenceId": {
+                    "type": "string"
+                },
+                "referenceType": {
+                    "type": "integer"
+                },
+                "role": {
+                    "description": "Role is \"owner\" if this transaction affected the caller's own balance,\nor \"giver\" if it happened within the caller's point economy (e.g. a\nfriend spending against the caller's reward).",
+                    "type": "string"
+                },
+                "timestamp": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "integer"
                 }
             }
         },
