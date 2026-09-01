@@ -15,6 +15,7 @@ type Repository interface {
 	SaveTx(db *gorm.DB, reward *models.Reward) error
 	Transact(fn func(*gorm.DB) error) error
 	FindByID(id uuid.UUID) (*models.Reward, error)
+	FindByIDs(ids []uuid.UUID) ([]models.Reward, error)
 	FindByGiver(giverID uuid.UUID) ([]models.Reward, error)
 	FindShopByGiver(userID, giverID uuid.UUID, availableOnly bool) ([]models.Reward, error)
 	AddVisibilityTx(tx *gorm.DB, rewardID uuid.UUID, userIDs []uuid.UUID) error
@@ -24,10 +25,14 @@ type Repository interface {
 	SaveClaim(claim *models.RewardClaim) error
 	SaveClaimTx(tx *gorm.DB, claim *models.RewardClaim) error
 	FindClaimByID(id uuid.UUID) (*models.RewardClaim, error)
-	FindClaimsByRedeemer(redeemerID uuid.UUID, before *time.Time, limit int) ([]models.RewardClaim, error)
+	FindClaimsByIDs(ids []uuid.UUID) ([]models.RewardClaim, error)
+	// FindClaimsRedeemed returns claims made by redeemerID (their own redemption history),
+	// optionally narrowed to claims against a single giver's rewards.
+	FindClaimsRedeemed(redeemerID uuid.UUID, giverID *uuid.UUID, before *time.Time, limit int) ([]models.RewardClaim, error)
 	FindClaimsByGiver(giverID uuid.UUID) ([]models.RewardClaim, error)
-	FindClaimsGivenByID(giverID uuid.UUID, before *time.Time, limit int) ([]models.RewardClaim, error)
-	FindClaimsByReward(rewardID uuid.UUID, before *time.Time, limit int) ([]models.RewardClaim, error)
+	// FindClaimsGiven returns claims made against giverID's rewards,
+	// optionally narrowed to a single reward.
+	FindClaimsGiven(giverID uuid.UUID, rewardID *uuid.UUID, before *time.Time, limit int) ([]models.RewardClaim, error)
 }
 
 type repository struct {
@@ -91,6 +96,15 @@ func (r *repository) FindByGiver(giverID uuid.UUID) ([]models.Reward, error) {
 	return rewards, err
 }
 
+func (r *repository) FindByIDs(ids []uuid.UUID) ([]models.Reward, error) {
+	var rewards []models.Reward
+	if len(ids) == 0 {
+		return rewards, nil
+	}
+	err := r.db.Where("id IN ?", ids).Find(&rewards).Error
+	return rewards, err
+}
+
 func (r *repository) AddVisibilityTx(tx *gorm.DB, rewardID uuid.UUID, userIDs []uuid.UUID) error {
 	if len(userIDs) == 0 {
 		return nil
@@ -126,9 +140,21 @@ func (r *repository) FindClaimByID(id uuid.UUID) (*models.RewardClaim, error) {
 	return &claim, err
 }
 
-func (r *repository) FindClaimsByRedeemer(redeemerID uuid.UUID, before *time.Time, limit int) ([]models.RewardClaim, error) {
+func (r *repository) FindClaimsByIDs(ids []uuid.UUID) ([]models.RewardClaim, error) {
+	var claims []models.RewardClaim
+	if len(ids) == 0 {
+		return claims, nil
+	}
+	err := r.db.Where("id IN ?", ids).Find(&claims).Error
+	return claims, err
+}
+
+func (r *repository) FindClaimsRedeemed(redeemerID uuid.UUID, giverID *uuid.UUID, before *time.Time, limit int) ([]models.RewardClaim, error) {
 	var claims []models.RewardClaim
 	q := r.db.Where("redeemer_id = ?", redeemerID)
+	if giverID != nil {
+		q = q.Where("giver_id = ?", *giverID)
+	}
 	if before != nil {
 		q = q.Where("redeemed_at < ?", *before)
 	}
@@ -142,19 +168,12 @@ func (r *repository) FindClaimsByGiver(giverID uuid.UUID) ([]models.RewardClaim,
 	return claims, err
 }
 
-func (r *repository) FindClaimsGivenByID(giverID uuid.UUID, before *time.Time, limit int) ([]models.RewardClaim, error) {
+func (r *repository) FindClaimsGiven(giverID uuid.UUID, rewardID *uuid.UUID, before *time.Time, limit int) ([]models.RewardClaim, error) {
 	var claims []models.RewardClaim
 	q := r.db.Where("giver_id = ?", giverID)
-	if before != nil {
-		q = q.Where("redeemed_at < ?", *before)
+	if rewardID != nil {
+		q = q.Where("reward_id = ?", *rewardID)
 	}
-	err := q.Order("redeemed_at desc").Limit(limit).Find(&claims).Error
-	return claims, err
-}
-
-func (r *repository) FindClaimsByReward(rewardID uuid.UUID, before *time.Time, limit int) ([]models.RewardClaim, error) {
-	var claims []models.RewardClaim
-	q := r.db.Where("reward_id = ?", rewardID)
 	if before != nil {
 		q = q.Where("redeemed_at < ?", *before)
 	}
