@@ -44,12 +44,19 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 	rg.GET("/me", h.GetHistory)
 }
 
+type BalanceResponse struct {
+	GiverID       uuid.UUID `json:"giverId"`
+	GiverUsername string    `json:"giverUsername"`
+	GiverName     string    `json:"giverName"`
+	Balance       int       `json:"balance"`
+}
+
 // GetBalances godoc
 // @Summary      Get my point balances per giver
 // @Tags         Transactions
 // @Produce      json
 // @Security     BearerAuth
-// @Success      200  {array}   models.UserPointBalance
+// @Success      200  {array}   BalanceResponse
 // @Failure      500  {object}  map[string]string
 // @Router       /transactions/balances [get]
 func (h *Handler) GetBalances(c *gin.Context) {
@@ -65,7 +72,37 @@ func (h *Handler) GetBalances(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, balances)
+	giverIDs := make([]uuid.UUID, len(balances))
+	for i, b := range balances {
+		giverIDs[i] = b.GiverID
+	}
+
+	givers, err := h.userService.GetByIDs(giverIDs)
+	if err != nil {
+		code, msg := httputil.ResolveServiceError(err)
+		c.JSON(code, gin.H{"error": msg})
+		return
+	}
+	giverMap := make(map[uuid.UUID]*models.BareUserDTO, len(givers))
+	for _, g := range givers {
+		giverMap[g.ID] = g
+	}
+
+	response := make([]BalanceResponse, len(balances))
+	for i, b := range balances {
+		username, name := "Unknown", "Unknown"
+		if giver, exists := giverMap[b.GiverID]; exists {
+			username, name = giver.Username, giver.Name
+		}
+		response[i] = BalanceResponse{
+			GiverID:       b.GiverID,
+			GiverUsername: username,
+			GiverName:     name,
+			Balance:       b.Balance,
+		}
+	}
+
+	c.JSON(http.StatusOK, response)
 }
 
 type TransactionResponse struct {
