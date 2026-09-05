@@ -44,6 +44,16 @@ func NewHub() *Hub {
 	}
 }
 
+type wsEvent struct {
+	Type string `json:"type"`
+	Data any    `json:"data"`
+}
+
+type readReceiptPayload struct {
+	FriendID uuid.UUID `json:"friendId"`
+	ReadAt   time.Time `json:"readAt"`
+}
+
 func (h *Hub) Register(userID uuid.UUID, conn *connection) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -71,8 +81,19 @@ func (h *Hub) Unregister(userID uuid.UUID, conn *connection) {
 	close(conn.send)
 }
 
-func (h *Hub) PushToUser(userID uuid.UUID, message *models.Message) {
-	payload, err := json.Marshal(message)
+func (h *Hub) PushMessage(userID uuid.UUID, message *models.Message) {
+	h.push(userID, wsEvent{Type: "message", Data: message})
+}
+
+func (h *Hub) PushReadReceipt(userID, byUserID uuid.UUID, readAt time.Time) {
+	h.push(userID, wsEvent{
+		Type: "read",
+		Data: readReceiptPayload{FriendID: byUserID, ReadAt: readAt},
+	})
+}
+
+func (h *Hub) push(userID uuid.UUID, event wsEvent) {
+	payload, err := json.Marshal(event)
 	if err != nil {
 		return
 	}

@@ -16,7 +16,8 @@ type FriendService interface {
 }
 
 type Pusher interface {
-	PushToUser(userID uuid.UUID, message *models.Message)
+	PushMessage(userID uuid.UUID, message *models.Message)
+	PushReadReceipt(userID, byUserID uuid.UUID, readAt time.Time)
 }
 
 type Service interface {
@@ -65,8 +66,8 @@ func (s *service) SendMessage(ctx context.Context, senderID, recipientID uuid.UU
 		return nil, &httputil.ServiceError{Code: http.StatusInternalServerError, Message: "failed to send message"}
 	}
 
-	s.pusher.PushToUser(recipientID, message)
-	s.pusher.PushToUser(senderID, message)
+	s.pusher.PushMessage(recipientID, message)
+	s.pusher.PushMessage(senderID, message)
 
 	return message, nil
 }
@@ -94,6 +95,7 @@ func (s *service) MarkAsRead(ctx context.Context, user1ID, user2ID uuid.UUID) er
 	if err := s.repo.MarkAsRead(user2ID, user1ID); err != nil {
 		return &httputil.ServiceError{Code: http.StatusInternalServerError, Message: "failed to mark messages as read"}
 	}
+	s.pusher.PushReadReceipt(user2ID, user1ID, time.Now())
 	return nil
 }
 
