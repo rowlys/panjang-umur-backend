@@ -315,15 +315,6 @@ definitions:
       username:
         type: string
     type: object
-  models.UserPointBalance:
-    properties:
-      balance:
-        type: integer
-      giverId:
-        type: string
-      ownerId:
-        type: string
-    type: object
   reward.CreateRewardRequest:
     properties:
       allowedUserIds:
@@ -401,6 +392,17 @@ definitions:
         minimum: 0
         type: integer
     type: object
+  transaction.BalanceResponse:
+    properties:
+      balance:
+        type: integer
+      giverId:
+        type: string
+      giverName:
+        type: string
+      giverUsername:
+        type: string
+    type: object
   transaction.TransactionResponse:
     properties:
       amount:
@@ -414,10 +416,6 @@ definitions:
       referenceType:
         type: integer
       role:
-        description: |-
-          Role is "owner" if this transaction affected the caller's own balance,
-          or "giver" if it happened within the caller's point economy (e.g. a
-          friend spending against the caller's reward).
         type: string
       timestamp:
         type: string
@@ -981,6 +979,29 @@ paths:
       security:
       - BearerAuth: []
       summary: Mark every message sent by a friend to the caller as read
+      tags:
+      - Chat
+  /chat/conversations:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              additionalProperties: true
+              type: object
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List conversation summaries (last message + unread count per friend)
       tags:
       - Chat
   /friends:
@@ -1656,7 +1677,7 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/models.UserPointBalance'
+              $ref: '#/definitions/transaction.BalanceResponse'
             type: array
         "500":
           description: Internal Server Error

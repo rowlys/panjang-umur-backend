@@ -23,6 +23,7 @@ type Service interface {
 	SendMessage(ctx context.Context, senderID, recipientID uuid.UUID, body string) (*models.Message, error)
 	GetConversation(ctx context.Context, user1ID, user2ID uuid.UUID, before *time.Time, limit int) ([]models.Message, error)
 	MarkAsRead(ctx context.Context, user1ID, user2ID uuid.UUID) error
+	ListConversations(ctx context.Context, userID uuid.UUID) ([]ConversationSummary, error)
 }
 
 type service struct {
@@ -94,4 +95,12 @@ func (s *service) MarkAsRead(ctx context.Context, user1ID, user2ID uuid.UUID) er
 		return &httputil.ServiceError{Code: http.StatusInternalServerError, Message: "failed to mark messages as read"}
 	}
 	return nil
+}
+
+func (s *service) ListConversations(ctx context.Context, userID uuid.UUID) ([]ConversationSummary, error) {
+	summaries, err := s.repo.FindConversationSummaries(userID)
+	if err != nil {
+		return nil, &httputil.ServiceError{Code: http.StatusInternalServerError, Message: "failed to retrieve conversations"}
+	}
+	return summaries, nil
 }

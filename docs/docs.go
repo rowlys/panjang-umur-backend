@@ -717,6 +717,43 @@ const docTemplate = `{
                 }
             }
         },
+        "/chat/conversations": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Chat"
+                ],
+                "summary": "List conversation summaries (last message + unread count per friend)",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/chat/{friendId}/messages": {
             "get": {
                 "security": [
@@ -1882,7 +1919,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/models.UserPointBalance"
+                                "$ref": "#/definitions/transaction.BalanceResponse"
                             }
                         }
                     },
@@ -2614,20 +2651,6 @@ const docTemplate = `{
                 }
             }
         },
-        "models.UserPointBalance": {
-            "type": "object",
-            "properties": {
-                "balance": {
-                    "type": "integer"
-                },
-                "giverId": {
-                    "type": "string"
-                },
-                "ownerId": {
-                    "type": "string"
-                }
-            }
-        },
         "reward.CreateRewardRequest": {
             "type": "object",
             "required": [
@@ -2744,6 +2767,23 @@ const docTemplate = `{
                 }
             }
         },
+        "transaction.BalanceResponse": {
+            "type": "object",
+            "properties": {
+                "balance": {
+                    "type": "integer"
+                },
+                "giverId": {
+                    "type": "string"
+                },
+                "giverName": {
+                    "type": "string"
+                },
+                "giverUsername": {
+                    "type": "string"
+                }
+            }
+        },
         "transaction.TransactionResponse": {
             "type": "object",
             "properties": {
@@ -2763,7 +2803,6 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "role": {
-                    "description": "Role is \"owner\" if this transaction affected the caller's own balance,\nor \"giver\" if it happened within the caller's point economy (e.g. a\nfriend spending against the caller's reward).",
                     "type": "string"
                 },
                 "timestamp": {

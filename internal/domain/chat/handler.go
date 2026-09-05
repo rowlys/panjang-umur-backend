@@ -40,6 +40,7 @@ func NewHandler(service Service, hub *Hub) *Handler {
 }
 
 func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
+	rg.GET("/conversations", h.ListConversations)
 	rg.GET("/:friendId/messages", h.GetMessages)
 	rg.POST("/:friendId/read", h.MarkAsRead)
 }
@@ -125,6 +126,39 @@ func (h *Handler) MarkAsRead(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Messages marked as read"})
+}
+
+// ListConversations godoc
+// @Summary      List conversation summaries (last message + unread count per friend)
+// @Tags         Chat
+// @Produce      json
+// @Security     BearerAuth
+// @Success      200  {array}   map[string]interface{}
+// @Failure      400  {object}  map[string]string
+// @Router       /chat/conversations [get]
+func (h *Handler) ListConversations(c *gin.Context) {
+	callerID, ok := httputil.ParseUserID(c)
+	if !ok {
+		return
+	}
+
+	summaries, err := h.service.ListConversations(c.Request.Context(), callerID)
+	if err != nil {
+		code, msg := httputil.ResolveServiceError(err)
+		c.JSON(code, gin.H{"error": msg})
+		return
+	}
+
+	response := make([]gin.H, 0, len(summaries))
+	for _, s := range summaries {
+		response = append(response, gin.H{
+			"friendId":    s.FriendID,
+			"lastMessage": s.LastMessage,
+			"unreadCount": s.UnreadCount,
+		})
+	}
+
+	c.JSON(http.StatusOK, response)
 }
 
 func (h *Handler) ServeWS(c *gin.Context) {
