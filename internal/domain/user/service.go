@@ -23,6 +23,16 @@ type LoginResponse struct {
 	Token string  `json:"token"`
 }
 
+type UpdateProfileInput struct {
+	Name     string `json:"name" binding:"required"`
+	Username string `json:"username" binding:"required"`
+}
+
+type ChangePasswordInput struct {
+	CurrentPassword string `json:"currentPassword" binding:"required"`
+	NewPassword     string `json:"newPassword" binding:"required,min=6"`
+}
+
 type Service interface {
 	Register(ctx context.Context, input RegisterInput) (*models.User, error)
 	Login(ctx context.Context, input LoginInput) (*LoginResponse, error)
@@ -30,6 +40,8 @@ type Service interface {
 	GetByUsername(username string) (*models.User, error)
 	GetByIDs(ids []uuid.UUID) ([]*models.BareUserDTO, error)
 	SearchByUsername(callerId uuid.UUID, prefix string, limit int) ([]models.BareUserDTO, error)
+	UpdateProfile(ctx context.Context, userID uuid.UUID, input UpdateProfileInput) (*models.User, error)
+	ChangePassword(ctx context.Context, userID uuid.UUID, input ChangePasswordInput) error
 }
 
 type service struct {
@@ -138,4 +150,53 @@ func (s *service) GetByIDs(ids []uuid.UUID) ([]*models.BareUserDTO, error) {
 
 func (s *service) SearchByUsername(callerId uuid.UUID, prefix string, limit int) ([]models.BareUserDTO, error) {
 	return s.repo.SearchByUsername(callerId, prefix, limit)
+}
+
+func (s *service) UpdateProfile(ctx context.Context, userID uuid.UUID, input UpdateProfileInput) (*models.User, error) {
+	user, err := s.repo.FindByID(userID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, &httputil.ServiceError{Code: http.StatusNotFound, Message: "User not found"}
+		}
+		return nil, &httputil.ServiceError{Code: http.StatusInternalServerError, Message: "Failed to retrieve user"}
+	}
+
+	user.Name = input.Name
+	user.Username = input.Username
+
+	if err := s.repo.Save(user); err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return nil, &httputil.ServiceError{Code: http.StatusConflict, Message: "Username already exists"}
+		}
+		return nil, &httputil.ServiceError{Code: http.StatusInternalServerError, Message: "Failed to update profile"}
+	}
+
+	return user, nil
+}
+
+func (s *service) ChangePassword(ctx context.Context, userID uuid.UUID, input ChangePasswordInput) error {
+	user, err := s.repo.FindByID(userID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return &httputil.ServiceError{Code: http.StatusNotFound, Message: "User not found"}
+		}
+		return &httputil.ServiceError{Code: http.StatusInternalServerError, Message: "Failed to retrieve user"}
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(input.CurrentPassword)); err != nil {
+		return &httputil.ServiceError{Code: http.StatusUnauthorized, Message: "Current password is incorrect"}
+	}
+
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(input.NewPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return &httputil.ServiceError{Code: http.StatusInternalServerError, Message: "Failed to secure password"}
+	}
+
+	user.PasswordHash = string(hashedPassword)
+	if err := s.repo.Save(user); err != nil {
+		return &httputil.ServiceError{Code: http.StatusInternalServerError, Message: "Failed to update password"}
+	}
+
+	return nil
 }

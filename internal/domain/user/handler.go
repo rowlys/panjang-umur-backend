@@ -48,6 +48,8 @@ func (h *Handler) RegisterAuthRoutes(rg *gin.RouterGroup) {
 func (h *Handler) RegisterProtectedRoutes(rg *gin.RouterGroup) {
 	// Static routes before wildcards
 	rg.GET("/me", h.GetMe)
+	rg.PATCH("/me", h.UpdateProfile)
+	rg.PATCH("/me/password", h.ChangePassword)
 	rg.GET("/username/:username", h.GetByUsername)
 	rg.GET("/:userId", h.GetByID)
 
@@ -157,6 +159,71 @@ func (h *Handler) GetByID(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, user)
+}
+
+// UpdateProfile godoc
+// @Summary      Update the authenticated user's profile
+// @Tags         Users
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        body body UpdateProfileInput true "Profile data"
+// @Success      200  {object}  models.User
+// @Failure      400  {object}  map[string]string
+// @Failure      409  {object}  map[string]string
+// @Router       /users/me [patch]
+func (h *Handler) UpdateProfile(c *gin.Context) {
+	userID, ok := httputil.ParseUserID(c)
+	if !ok {
+		return
+	}
+
+	var input UpdateProfileInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	user, err := h.service.UpdateProfile(c.Request.Context(), userID, input)
+	if err != nil {
+		code, msg := httputil.ResolveServiceError(err)
+		c.JSON(code, gin.H{"error": msg})
+		return
+	}
+
+	c.JSON(http.StatusOK, user)
+}
+
+// ChangePassword godoc
+// @Summary      Change the authenticated user's password
+// @Tags         Users
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        body body ChangePasswordInput true "Password data"
+// @Success      200  {object}  map[string]string
+// @Failure      400  {object}  map[string]string
+// @Failure      401  {object}  map[string]string
+// @Router       /users/me/password [patch]
+func (h *Handler) ChangePassword(c *gin.Context) {
+	userID, ok := httputil.ParseUserID(c)
+	if !ok {
+		return
+	}
+
+	var input ChangePasswordInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := h.service.ChangePassword(c.Request.Context(), userID, input); err != nil {
+		code, msg := httputil.ResolveServiceError(err)
+		c.JSON(code, gin.H{"error": msg})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Password updated successfully"})
 }
 
 // GetByUsername godoc
