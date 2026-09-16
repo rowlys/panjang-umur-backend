@@ -79,10 +79,22 @@ func main() {
 	
 	router := gin.Default()
 
+	allowedOrigins := strings.FieldsFunc(config.GetEnv("ALLOWED_ORIGINS", ""), func(r rune) bool {
+		return r == ','
+	})
+
 	router.Use(cors.New(cors.Config{
 		AllowOriginFunc: func(origin string) bool {
-			return strings.HasPrefix(origin, "http://localhost:") ||
-				strings.HasPrefix(origin, "http://127.0.0.1:")
+			if strings.HasPrefix(origin, "http://localhost:") ||
+				strings.HasPrefix(origin, "http://127.0.0.1:") {
+				return true
+			}
+			for _, allowed := range allowedOrigins {
+				if origin == strings.TrimSpace(allowed) {
+					return true
+				}
+			}
+			return false
 		},
 		AllowMethods:     []string{"GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},

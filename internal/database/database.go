@@ -15,12 +15,13 @@ var DB *gorm.DB
 
 func Connect() {
 	dsn := fmt.Sprintf(
-		"host=%s user=%s password=%s dbname=%s port=%s sslmode=disable TimeZone=Asia/Jakarta",
+		"host=%s user=%s password=%s dbname=%s port=%s sslmode=%s TimeZone=Asia/Jakarta",
 		config.GetEnv("DB_HOST", "localhost"),
 		config.GetEnv("DB_USER", "postgres"),
 		config.GetEnv("DB_PASSWORD", ""),
 		config.GetEnv("DB_NAME", "panjang_umur"),
 		config.GetEnv("DB_PORT", "5432"),
+		config.GetEnv("DB_SSLMODE", "disable"),
 	)
 
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
@@ -49,9 +50,6 @@ func Connect() {
 		log.Fatalf("Failed to migrate database schemas: %v", err)
 	}
 
-	// One-time cleanup: challenge_assignments was replaced by challenge_assignees +
-	// challenge_submissions when the challenge system was split into an eligibility
-	// allowlist and a submission history.
 	if db.Migrator().HasTable("challenge_assignments") {
 		if err := db.Migrator().DropTable("challenge_assignments"); err != nil {
 			log.Fatalf("Failed to drop legacy challenge_assignments table: %v", err)
