@@ -72,7 +72,23 @@ type GetChallengeDetailResponse struct {
 	ExpiresAt   *time.Time         `json:"expiresAt,omitempty"`
 	// MySubmissionStatus is the caller's submission status for the current
 	// period (nil if they haven't submitted yet). Always nil for the creator.
-	MySubmissionStatus *int `json:"mySubmissionStatus,omitempty"`
+	MySubmissionStatus *int                 `json:"mySubmissionStatus,omitempty"`
+	Assignees          []models.BareUserDTO `json:"assignees"`
+}
+
+type GetCreatedChallengeDTO struct {
+	ID          uuid.UUID            `json:"id"`
+	Title       string               `json:"title"`
+	Description string               `json:"description"`
+	Points      int                  `json:"points"`
+	Type        int                  `json:"type"`
+	Status      int                  `json:"status"`
+	ResetDay    int                  `json:"resetDay"`
+	CreatorID   uuid.UUID            `json:"creatorId"`
+	Restricted  bool                 `json:"restricted"`
+	CreatedAt   time.Time            `json:"createdAt"`
+	ExpiresAt   *time.Time           `json:"expiresAt,omitempty"`
+	Assignees   []models.BareUserDTO `json:"assignees"`
 }
 
 type GetAssignedChallengeDTO struct {
@@ -345,6 +361,13 @@ func (h *Handler) GetByID(c *gin.Context) {
 		mySubmissionStatus = &status
 	}
 
+	assignees, err := h.assigneeUsersForChallenges([]uuid.UUID{challenge.ID})
+	if err != nil {
+		code, msg := httputil.ResolveServiceError(err)
+		c.JSON(code, gin.H{"error": msg})
+		return
+	}
+
 	c.JSON(http.StatusOK, GetChallengeDetailResponse{
 		ID:                 challenge.ID,
 		Title:              challenge.Title,
@@ -358,7 +381,44 @@ func (h *Handler) GetByID(c *gin.Context) {
 		CreatedAt:          challenge.CreatedAt,
 		ExpiresAt:          challenge.ExpiresAt,
 		MySubmissionStatus: mySubmissionStatus,
+		Assignees:          assignees[challenge.ID],
 	})
+}
+
+// assigneeUsersForChallenges batch-loads assignee rows for the given challenges
+// and resolves them to user info, grouped back by challenge ID.
+func (h *Handler) assigneeUsersForChallenges(challengeIDs []uuid.UUID) (map[uuid.UUID][]models.BareUserDTO, error) {
+	assignees, err := h.service.GetAssigneesForChallenges(challengeIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	uniqueUserIDs := make(map[uuid.UUID]struct{})
+	var userIDs []uuid.UUID
+	for _, a := range assignees {
+		if _, exists := uniqueUserIDs[a.UserID]; !exists {
+			uniqueUserIDs[a.UserID] = struct{}{}
+			userIDs = append(userIDs, a.UserID)
+		}
+	}
+
+	users, err := h.userService.GetByIDs(userIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	userMap := make(map[uuid.UUID]models.BareUserDTO)
+	for _, u := range users {
+		userMap[u.ID] = *u
+	}
+
+	result := make(map[uuid.UUID][]models.BareUserDTO)
+	for _, a := range assignees {
+		if user, exists := userMap[a.UserID]; exists {
+			result[a.ChallengeID] = append(result[a.ChallengeID], user)
+		}
+	}
+	return result, nil
 }
 
 
@@ -640,11 +700,11 @@ func (h *Handler) GetByAssignee(c *gin.Context) {
 }
 
 // GetByCreator godoc
-// @Summary      Get challenges created by the current user
+// @Summary      Get challenges created by the current user, including their assignees
 // @Tags         Challenges
 // @Produce      json
 // @Security     BearerAuth
-// @Success      200  {array}   models.Challenge
+// @Success      200  {array}   GetCreatedChallengeDTO
 // @Failure      500  {object}  map[string]string
 // @Router       /challenges/me/created [get]
 func (h *Handler) GetByCreator(c *gin.Context) {
@@ -660,7 +720,37 @@ func (h *Handler) GetByCreator(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, challenges)
+	challengeIDs := make([]uuid.UUID, len(challenges))
+	for i, challenge := range challenges {
+		challengeIDs[i] = challenge.ID
+	}
+
+	assigneesByChallenge, err := h.assigneeUsersForChallenges(challengeIDs)
+	if err != nil {
+		code, msg := httputil.ResolveServiceError(err)
+		c.JSON(code, gin.H{"error": msg})
+		return
+	}
+
+	response := make([]GetCreatedChallengeDTO, len(challenges))
+	for i, challenge := range challenges {
+		response[i] = GetCreatedChallengeDTO{
+			ID:          challenge.ID,
+			Title:       challenge.Title,
+			Description: challenge.Description,
+			Points:      challenge.Points,
+			Type:        int(challenge.Type),
+			Status:      int(challenge.Status),
+			ResetDay:    challenge.ResetDay,
+			CreatorID:   challenge.CreatorID,
+			Restricted:  challenge.Restricted,
+			CreatedAt:   challenge.CreatedAt,
+			ExpiresAt:   challenge.ExpiresAt,
+			Assignees:   assigneesByChallenge[challenge.ID],
+		}
+	}
+
+	c.JSON(http.StatusOK, response)
 }
 
 // GenerateProofUploadURL godoc

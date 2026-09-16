@@ -28,6 +28,7 @@ type Repository interface {
 	CreateAssigneeTx(tx *gorm.DB, a *models.ChallengeAssignee) error
 	FindAssignee(challengeID, userID uuid.UUID) (*models.ChallengeAssignee, error)
 	FindAssigneesByChallenge(challengeID uuid.UUID) ([]models.ChallengeAssignee, error)
+	FindAssigneesByChallenges(challengeIDs []uuid.UUID) ([]models.ChallengeAssignee, error)
 
 	CreateSubmission(s *models.ChallengeSubmission) error
 	CreateSubmissionTx(tx *gorm.DB, s *models.ChallengeSubmission) error
@@ -165,6 +166,15 @@ func (r *repository) FindAssignee(challengeID, userID uuid.UUID) (*models.Challe
 func (r *repository) FindAssigneesByChallenge(challengeID uuid.UUID) ([]models.ChallengeAssignee, error) {
 	var assignees []models.ChallengeAssignee
 	err := r.db.Where("challenge_id = ?", challengeID).Find(&assignees).Error
+	return assignees, err
+}
+
+func (r *repository) FindAssigneesByChallenges(challengeIDs []uuid.UUID) ([]models.ChallengeAssignee, error) {
+	var assignees []models.ChallengeAssignee
+	if len(challengeIDs) == 0 {
+		return assignees, nil
+	}
+	err := r.db.Where("challenge_id IN ?", challengeIDs).Find(&assignees).Error
 	return assignees, err
 }
 

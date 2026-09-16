@@ -43,6 +43,8 @@ type Service interface {
 	GetByIDs(ids []uuid.UUID) ([]models.Challenge, error)
 	GetByAssignee(userID uuid.UUID) ([]models.Challenge, error)
 	GetByCreator(userID uuid.UUID, statuses []models.ChallengeStatus) ([]models.Challenge, error)
+	// GetAssigneesForChallenges batch-loads the allowlist rows for the given challenges.
+	GetAssigneesForChallenges(challengeIDs []uuid.UUID) ([]models.ChallengeAssignee, error)
 
 	// GetSubmissionsSubmitted returns submissions callerID made, optionally narrowed to a single challenge.
 	GetSubmissionsSubmitted(callerID uuid.UUID, challengeID *uuid.UUID, statusFilter string, before *time.Time, limit int) ([]models.ChallengeSubmission, error)
@@ -383,6 +385,14 @@ func (s *service) GetMySubmissionStatus(callerID uuid.UUID, challenge *models.Ch
 
 func (s *service) GetByCreator(userID uuid.UUID, statuses []models.ChallengeStatus) ([]models.Challenge, error) {
 	return s.repo.FindByCreator(userID, statuses)
+}
+
+func (s *service) GetAssigneesForChallenges(challengeIDs []uuid.UUID) ([]models.ChallengeAssignee, error) {
+	assignees, err := s.repo.FindAssigneesByChallenges(challengeIDs)
+	if err != nil {
+		return nil, &httputil.ServiceError{Code: http.StatusInternalServerError, Message: "Failed to fetch challenge assignees"}
+	}
+	return assignees, nil
 }
 
 func (s *service) GetByIDs(ids []uuid.UUID) ([]models.Challenge, error) {
