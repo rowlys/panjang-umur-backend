@@ -14,6 +14,8 @@ type Service interface {
 	GetBalance(ownerID, giverID uuid.UUID) (int, error)
 	GetBalanceTx(db *gorm.DB, ownerID, giverID uuid.UUID) (int, error)
 	GetAllBalances(ownerID uuid.UUID) ([]models.UserPointBalance, error)
+	// GetAllGivenBalances returns how many of giverID's points each user holds.
+	GetAllGivenBalances(giverID uuid.UUID) ([]models.UserPointBalance, error)
 	// GetHistory returns every transaction userID took part in, as either the
 	// earner/spender or the counterparty (giver), most recent first,
 	// optionally narrowed to a single reference type.
@@ -70,6 +72,10 @@ func (s *service) GetBalanceTx(db *gorm.DB, ownerID, giverID uuid.UUID) (int, er
 
 func (s *service) GetAllBalances(ownerID uuid.UUID) ([]models.UserPointBalance, error) {
 	return s.repo.FindBalancesByOwner(ownerID)
+}
+
+func (s *service) GetAllGivenBalances(giverID uuid.UUID) ([]models.UserPointBalance, error) {
+	return s.repo.FindBalancesByGiver(giverID)
 }
 
 func clampHistoryLimit(limit int) int {

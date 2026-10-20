@@ -41,6 +41,8 @@ func NewHandler(service Service, rewardService RewardService, challengeService C
 
 func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 	rg.GET("/balances", h.GetBalances)
+	rg.GET("/balances/given", h.GetGivenBalances)
+	rg.GET("/balances/given/:userId", h.GetGivenBalance)
 	rg.GET("/me", h.GetHistory)
 }
 
@@ -103,6 +105,98 @@ func (h *Handler) GetBalances(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, response)
+}
+
+type GivenBalanceResponse struct {
+	OwnerID       uuid.UUID `json:"ownerId"`
+	OwnerUsername string    `json:"ownerUsername"`
+	OwnerName     string    `json:"ownerName"`
+	Balance       int       `json:"balance"`
+}
+
+// GetGivenBalances godoc
+// @Summary      Get how many of my points each user holds
+// @Tags         Transactions
+// @Produce      json
+// @Security     BearerAuth
+// @Success      200  {array}   GivenBalanceResponse
+// @Failure      500  {object}  map[string]string
+// @Router       /transactions/balances/given [get]
+func (h *Handler) GetGivenBalances(c *gin.Context) {
+	userID, ok := httputil.ParseUserID(c)
+	if !ok {
+		return
+	}
+
+	balances, err := h.service.GetAllGivenBalances(userID)
+	if err != nil {
+		code, msg := httputil.ResolveServiceError(err)
+		c.JSON(code, gin.H{"error": msg})
+		return
+	}
+
+	ownerIDs := make([]uuid.UUID, len(balances))
+	for i, b := range balances {
+		ownerIDs[i] = b.OwnerID
+	}
+
+	owners, err := h.userService.GetByIDs(ownerIDs)
+	if err != nil {
+		code, msg := httputil.ResolveServiceError(err)
+		c.JSON(code, gin.H{"error": msg})
+		return
+	}
+	ownerMap := make(map[uuid.UUID]*models.BareUserDTO, len(owners))
+	for _, o := range owners {
+		ownerMap[o.ID] = o
+	}
+
+	response := make([]GivenBalanceResponse, len(balances))
+	for i, b := range balances {
+		username, name := "Unknown", "Unknown"
+		if owner, exists := ownerMap[b.OwnerID]; exists {
+			username, name = owner.Username, owner.Name
+		}
+		response[i] = GivenBalanceResponse{
+			OwnerID:       b.OwnerID,
+			OwnerUsername: username,
+			OwnerName:     name,
+			Balance:       b.Balance,
+		}
+	}
+
+	c.JSON(http.StatusOK, response)
+}
+
+// GetGivenBalance godoc
+// @Summary      Get how many of my points one user holds
+// @Tags         Transactions
+// @Produce      json
+// @Security     BearerAuth
+// @Param        userId  path      string  true  "User ID (UUID)"
+// @Success      200     {object}  map[string]interface{}
+// @Failure      400     {object}  map[string]string
+// @Failure      500     {object}  map[string]string
+// @Router       /transactions/balances/given/{userId} [get]
+func (h *Handler) GetGivenBalance(c *gin.Context) {
+	callerID, ok := httputil.ParseUserID(c)
+	if !ok {
+		return
+	}
+
+	ownerID, err := uuid.Parse(c.Param("userId"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+		return
+	}
+
+	balance, err := h.service.GetBalance(ownerID, callerID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch balance"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"userId": ownerID, "balance": balance})
 }
 
 type TransactionResponse struct {

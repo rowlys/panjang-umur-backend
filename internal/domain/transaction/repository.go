@@ -16,6 +16,7 @@ type Repository interface {
 	GetBalance(ownerID, giverID uuid.UUID) (int, error)
 	GetBalanceTx(db *gorm.DB, ownerID, giverID uuid.UUID) (int, error)
 	FindBalancesByOwner(ownerID uuid.UUID) ([]models.UserPointBalance, error)
+	FindBalancesByGiver(giverID uuid.UUID) ([]models.UserPointBalance, error)
 	FindByParticipant(userID uuid.UUID, referenceType *models.TransactionReferenceType, before *time.Time, limit int) ([]models.Transaction, error)
 }
 
@@ -64,6 +65,12 @@ func (r *repository) GetBalanceTx(db *gorm.DB, ownerID, giverID uuid.UUID) (int,
 func (r *repository) FindBalancesByOwner(ownerID uuid.UUID) ([]models.UserPointBalance, error) {
 	var balances []models.UserPointBalance
 	err := r.db.Where("owner_id = ?", ownerID).Find(&balances).Error
+	return balances, err
+}
+
+func (r *repository) FindBalancesByGiver(giverID uuid.UUID) ([]models.UserPointBalance, error) {
+	var balances []models.UserPointBalance
+	err := r.db.Where("giver_id = ?", giverID).Find(&balances).Error
 	return balances, err
 }
 
