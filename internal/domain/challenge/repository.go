@@ -244,7 +244,9 @@ func (r *repository) FindSubmissionsReceived(creatorID uuid.UUID, challengeID *u
 	query := r.db.Model(&models.ChallengeSubmission{}).
 		Select("challenge_submissions.*").
 		Joins("JOIN challenges ON challenges.id = challenge_submissions.challenge_id AND challenges.deleted_at IS NULL").
-		Where("challenges.creator_id = ?", creatorID)
+		Where("challenges.creator_id = ?", creatorID).
+		// Pending submissions on a challenge that is no longer active can never be approved, so hide them.
+		Where("(challenges.status = ? OR challenge_submissions.status != ?)", models.StatusActive, models.SubmissionSubmitted)
 	if challengeID != nil {
 		query = query.Where("challenge_submissions.challenge_id = ?", *challengeID)
 	}
