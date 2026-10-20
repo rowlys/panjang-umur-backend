@@ -126,6 +126,7 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 
 	rg.PATCH("/:challengeId/submit", h.Submit)
 	rg.PATCH("/:challengeId/cancel", h.Cancel)
+	rg.DELETE("/:challengeId", h.Delete)
 	rg.GET("/submissions/submitted", h.GetSubmissionsSubmitted)
 	rg.GET("/submissions/received", h.GetSubmissionsReceived)
 	rg.PATCH("/submissions/:submissionId/approve", h.Approve)
@@ -282,6 +283,38 @@ func (h *Handler) Cancel(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, challenge)
+}
+
+// Delete godoc
+// @Summary      Delete a challenge (its submissions are hidden, earned points are kept)
+// @Tags         Challenges
+// @Produce      json
+// @Security     BearerAuth
+// @Param        challengeId  path      string  true  "Challenge ID (UUID)"
+// @Success      200          {object}  map[string]string
+// @Failure      400          {object}  map[string]string
+// @Failure      403          {object}  map[string]string
+// @Failure      404          {object}  map[string]string
+// @Router       /challenges/{challengeId} [delete]
+func (h *Handler) Delete(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("challengeId"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid challenge ID"})
+		return
+	}
+
+	userID, ok := httputil.ParseUserID(c)
+	if !ok {
+		return
+	}
+
+	if err := h.service.Delete(c.Request.Context(), id, userID); err != nil {
+		code, msg := httputil.ResolveServiceError(err)
+		c.JSON(code, gin.H{"error": msg})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Challenge deleted"})
 }
 
 // GetAll godoc

@@ -12,6 +12,7 @@ import (
 type Repository interface {
 	Create(challenge *models.Challenge) error
 	Save(challenge *models.Challenge) error
+	Delete(id uuid.UUID) error
 
 	CreateTx(tx *gorm.DB, challenge *models.Challenge) error
 	SaveTx(tx *gorm.DB, challenge *models.Challenge) error
@@ -61,6 +62,11 @@ func (r *repository) Create(challenge *models.Challenge) error {
 
 func (r *repository) Save(challenge *models.Challenge) error {
 	return r.db.Save(challenge).Error
+}
+
+// Delete is a soft delete (sets deleted_at); submissions and ledger rows are kept.
+func (r *repository) Delete(id uuid.UUID) error {
+	return r.db.Where("id = ?", id).Delete(&models.Challenge{}).Error
 }
 
 func (r *repository) CreateTx(tx *gorm.DB, challenge *models.Challenge) error {
@@ -116,7 +122,8 @@ func (r *repository) FindByIDs(ids []uuid.UUID) ([]models.Challenge, error) {
 	if len(ids) == 0 {
 		return challenges, nil
 	}
-	err := r.db.Where("id IN ?", ids).Find(&challenges).Error
+	// Unscoped so transaction history still shows titles of deleted challenges.
+	err := r.db.Unscoped().Where("id IN ?", ids).Find(&challenges).Error
 	return challenges, err
 }
 
@@ -215,17 +222,20 @@ func (r *repository) FindLatestSubmission(challengeID, userID uuid.UUID) (*model
 
 func (r *repository) FindSubmissionsSubmitted(userID uuid.UUID, challengeID *uuid.UUID, statusFilter *models.SubmissionStatus, before *time.Time, limit int) ([]models.ChallengeSubmission, error) {
 	var submissions []models.ChallengeSubmission
-	query := r.db.Where("user_id = ?", userID)
+	query := r.db.Model(&models.ChallengeSubmission{}).
+		Select("challenge_submissions.*").
+		Joins("JOIN challenges ON challenges.id = challenge_submissions.challenge_id AND challenges.deleted_at IS NULL").
+		Where("challenge_submissions.user_id = ?", userID)
 	if challengeID != nil {
-		query = query.Where("challenge_id = ?", *challengeID)
+		query = query.Where("challenge_submissions.challenge_id = ?", *challengeID)
 	}
 	if statusFilter != nil {
-		query = query.Where("status = ?", *statusFilter)
+		query = query.Where("challenge_submissions.status = ?", *statusFilter)
 	}
 	if before != nil {
-		query = query.Where("submitted_at < ?", *before)
+		query = query.Where("challenge_submissions.submitted_at < ?", *before)
 	}
-	err := query.Order("submitted_at desc").Limit(limit).Find(&submissions).Error
+	err := query.Order("challenge_submissions.submitted_at desc").Limit(limit).Find(&submissions).Error
 	return submissions, err
 }
 
@@ -233,7 +243,7 @@ func (r *repository) FindSubmissionsReceived(creatorID uuid.UUID, challengeID *u
 	var submissions []models.ChallengeSubmission
 	query := r.db.Model(&models.ChallengeSubmission{}).
 		Select("challenge_submissions.*").
-		Joins("JOIN challenges ON challenges.id = challenge_submissions.challenge_id").
+		Joins("JOIN challenges ON challenges.id = challenge_submissions.challenge_id AND challenges.deleted_at IS NULL").
 		Where("challenges.creator_id = ?", creatorID)
 	if challengeID != nil {
 		query = query.Where("challenge_submissions.challenge_id = ?", *challengeID)

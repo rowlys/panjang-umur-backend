@@ -267,14 +267,14 @@ const docTemplate = `{
                 "tags": [
                     "Challenges"
                 ],
-                "summary": "Get challenges created by the current user",
+                "summary": "Get challenges created by the current user, including their assignees",
                 "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/models.Challenge"
+                                "$ref": "#/definitions/challenge.GetCreatedChallengeDTO"
                             }
                         }
                     },
@@ -505,6 +505,69 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/models.ChallengeSubmission"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/challenges/{challengeId}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Challenges"
+                ],
+                "summary": "Delete a challenge (its submissions are hidden, earned points are kept)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Challenge ID (UUID)",
+                        "name": "challengeId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     },
                     "400": {
@@ -1935,6 +1998,94 @@ const docTemplate = `{
                 }
             }
         },
+        "/transactions/balances/given": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Transactions"
+                ],
+                "summary": "Get how many of my points each user holds",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/transaction.GivenBalanceResponse"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/transactions/balances/given/{userId}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Transactions"
+                ],
+                "summary": "Get how many of my points one user holds",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "User ID (UUID)",
+                        "name": "userId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/transactions/me": {
             "get": {
                 "security": [
@@ -2019,6 +2170,119 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/models.User"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Users"
+                ],
+                "summary": "Update the authenticated user's profile",
+                "parameters": [
+                    {
+                        "description": "Profile data",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/user.UpdateProfileInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.User"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/users/me/password": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Users"
+                ],
+                "summary": "Change the authenticated user's password",
+                "parameters": [
+                    {
+                        "description": "Password data",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/user.ChangePasswordInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     },
                     "401": {
@@ -2226,6 +2490,12 @@ const docTemplate = `{
         "challenge.GetChallengeDetailResponse": {
             "type": "object",
             "properties": {
+                "assignees": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.BareUserDTO"
+                    }
+                },
                 "createdAt": {
                     "type": "string"
                 },
@@ -2244,6 +2514,50 @@ const docTemplate = `{
                 "mySubmissionStatus": {
                     "description": "MySubmissionStatus is the caller's submission status for the current\nperiod (nil if they haven't submitted yet). Always nil for the creator.",
                     "type": "integer"
+                },
+                "points": {
+                    "type": "integer"
+                },
+                "resetDay": {
+                    "type": "integer"
+                },
+                "restricted": {
+                    "type": "boolean"
+                },
+                "status": {
+                    "type": "integer"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "integer"
+                }
+            }
+        },
+        "challenge.GetCreatedChallengeDTO": {
+            "type": "object",
+            "properties": {
+                "assignees": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.BareUserDTO"
+                    }
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "creatorId": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "expiresAt": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
                 },
                 "points": {
                     "type": "integer"
@@ -2784,6 +3098,23 @@ const docTemplate = `{
                 }
             }
         },
+        "transaction.GivenBalanceResponse": {
+            "type": "object",
+            "properties": {
+                "balance": {
+                    "type": "integer"
+                },
+                "ownerId": {
+                    "type": "string"
+                },
+                "ownerName": {
+                    "type": "string"
+                },
+                "ownerUsername": {
+                    "type": "string"
+                }
+            }
+        },
         "transaction.TransactionResponse": {
             "type": "object",
             "properties": {
@@ -2816,6 +3147,22 @@ const docTemplate = `{
                 }
             }
         },
+        "user.ChangePasswordInput": {
+            "type": "object",
+            "required": [
+                "currentPassword",
+                "newPassword"
+            ],
+            "properties": {
+                "currentPassword": {
+                    "type": "string"
+                },
+                "newPassword": {
+                    "type": "string",
+                    "minLength": 6
+                }
+            }
+        },
         "user.LoginInput": {
             "type": "object",
             "required": [
@@ -2845,6 +3192,21 @@ const docTemplate = `{
                 "password": {
                     "type": "string",
                     "minLength": 6
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "user.UpdateProfileInput": {
+            "type": "object",
+            "required": [
+                "name",
+                "username"
+            ],
+            "properties": {
+                "name": {
+                    "type": "string"
                 },
                 "username": {
                     "type": "string"

@@ -38,6 +38,7 @@ type Service interface {
 	Submit(ctx context.Context, challengeID uuid.UUID, userID uuid.UUID, proofImageID *uuid.UUID) (*models.Challenge, error)
 	Approve(ctx context.Context, submissionID uuid.UUID, callerID uuid.UUID) (*models.ChallengeSubmission, error)
 	Cancel(ctx context.Context, challengeID uuid.UUID, callerID uuid.UUID) (*models.Challenge, error)
+	Delete(ctx context.Context, challengeID uuid.UUID, callerID uuid.UUID) error
 	GetAll(callerID uuid.UUID, statuses []models.ChallengeStatus) ([]models.Challenge, error)
 	GetByID(callerID uuid.UUID, id uuid.UUID) (*models.Challenge, error)
 	GetByIDs(ids []uuid.UUID) ([]models.Challenge, error)
@@ -292,6 +293,23 @@ func (s *service) Cancel(ctx context.Context, challengeID uuid.UUID, callerID uu
 	}
 
 	return challenge, nil
+}
+
+func (s *service) Delete(ctx context.Context, challengeID uuid.UUID, callerID uuid.UUID) error {
+	challenge, err := s.repo.FindByID(challengeID)
+	if err != nil {
+		return &httputil.ServiceError{Code: http.StatusNotFound, Message: "Challenge not found"}
+	}
+
+	if challenge.CreatorID != callerID {
+		return &httputil.ServiceError{Code: http.StatusForbidden, Message: "Only the challenge creator can delete it"}
+	}
+
+	if err := s.repo.Delete(challengeID); err != nil {
+		return &httputil.ServiceError{Code: http.StatusInternalServerError, Message: "Failed to delete challenge"}
+	}
+
+	return nil
 }
 
 func (s *service) GetAll(callerID uuid.UUID, statuses []models.ChallengeStatus) ([]models.Challenge, error) {
