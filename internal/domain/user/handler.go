@@ -7,12 +7,14 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/rowlys/panjang-umur-backend/internal/httputil"
+	"github.com/rowlys/panjang-umur-backend/internal/models"
 )
 
 type RegisterInput struct {
-	Username string `json:"username" binding:"required"`
-	Name     string `json:"name" binding:"required"`
-	Password string `json:"password" binding:"required,min=6"`
+	Username string        `json:"username" binding:"required"`
+	Name     string        `json:"name" binding:"required"`
+	Password string        `json:"password" binding:"required,min=6"`
+	Gender   models.Gender `json:"gender" binding:"required,oneof=1 2"`
 }
 
 type LoginInput struct {

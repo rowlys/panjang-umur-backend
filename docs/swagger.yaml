@@ -258,6 +258,16 @@ definitions:
     x-enum-varnames:
     - FriendshipPending
     - FriendshipAccepted
+  models.Gender:
+    enum:
+    - 0
+    - 1
+    - 2
+    type: integer
+    x-enum-varnames:
+    - GenderUnspecified
+    - GenderMale
+    - GenderFemale
   models.Message:
     properties:
       body:
@@ -339,6 +349,8 @@ definitions:
     properties:
       createdAt:
         type: string
+      gender:
+        $ref: '#/definitions/models.Gender'
       id:
         type: string
       name:
@@ -491,6 +503,12 @@ definitions:
     type: object
   user.RegisterInput:
     properties:
+      gender:
+        allOf:
+        - $ref: '#/definitions/models.Gender'
+        enum:
+        - 1
+        - 2
       name:
         type: string
       password:
@@ -499,12 +517,19 @@ definitions:
       username:
         type: string
     required:
+    - gender
     - name
     - password
     - username
     type: object
   user.UpdateProfileInput:
     properties:
+      gender:
+        allOf:
+        - $ref: '#/definitions/models.Gender'
+        enum:
+        - 1
+        - 2
       name:
         type: string
       username:

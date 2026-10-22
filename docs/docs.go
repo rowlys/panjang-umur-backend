@@ -2830,6 +2830,19 @@ const docTemplate = `{
                 "FriendshipAccepted"
             ]
         },
+        "models.Gender": {
+            "type": "integer",
+            "enum": [
+                0,
+                1,
+                2
+            ],
+            "x-enum-varnames": [
+                "GenderUnspecified",
+                "GenderMale",
+                "GenderFemale"
+            ]
+        },
         "models.Message": {
             "type": "object",
             "properties": {
@@ -2950,6 +2963,9 @@ const docTemplate = `{
             "properties": {
                 "createdAt": {
                     "type": "string"
+                },
+                "gender": {
+                    "$ref": "#/definitions/models.Gender"
                 },
                 "id": {
                     "type": "string"
@@ -3181,11 +3197,23 @@ const docTemplate = `{
         "user.RegisterInput": {
             "type": "object",
             "required": [
+                "gender",
                 "name",
                 "password",
                 "username"
             ],
             "properties": {
+                "gender": {
+                    "enum": [
+                        1,
+                        2
+                    ],
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/models.Gender"
+                        }
+                    ]
+                },
                 "name": {
                     "type": "string"
                 },
@@ -3205,6 +3233,17 @@ const docTemplate = `{
                 "username"
             ],
             "properties": {
+                "gender": {
+                    "enum": [
+                        1,
+                        2
+                    ],
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/models.Gender"
+                        }
+                    ]
+                },
                 "name": {
                     "type": "string"
                 },

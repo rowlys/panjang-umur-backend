@@ -19,13 +19,14 @@ import (
 )
 
 type LoginResponse struct {
-	User  models.BareUserDTO `json:"user"`
+	User  *models.User `json:"user"`
 	Token string  `json:"token"`
 }
 
 type UpdateProfileInput struct {
-	Name     string `json:"name" binding:"required"`
-	Username string `json:"username" binding:"required"`
+	Name     string         `json:"name" binding:"required"`
+	Username string         `json:"username" binding:"required"`
+	Gender   *models.Gender `json:"gender" binding:"omitempty,oneof=1 2"`
 }
 
 type ChangePasswordInput struct {
@@ -69,6 +70,7 @@ func (s *service) Register(ctx context.Context, input RegisterInput) (*models.Us
 		Username:     input.Username,
 		Name:         input.Name,
 		PasswordHash: string(hashedPassword),
+		Gender:       input.Gender,
 	}
 
 	if err := s.repo.Create(user); err != nil {
@@ -104,14 +106,8 @@ func (s *service) Login(ctx context.Context, input LoginInput) (*LoginResponse, 
 		return nil, &httputil.ServiceError{Code: http.StatusInternalServerError, Message: "Failed to generate token"}
 	}
 
-	userDTO := models.BareUserDTO{
-		ID:       user.ID,
-		Username: user.Username,
-		Name:     user.Name,
-	}
-
 	loginResponse := LoginResponse{
-		User:  userDTO,
+		User:  user,
 		Token: tokenString,
 	}
 
@@ -163,6 +159,9 @@ func (s *service) UpdateProfile(ctx context.Context, userID uuid.UUID, input Upd
 
 	user.Name = input.Name
 	user.Username = input.Username
+	if input.Gender != nil {
+		user.Gender = *input.Gender
+	}
 
 	if err := s.repo.Save(user); err != nil {
 		var pgErr *pgconn.PgError
