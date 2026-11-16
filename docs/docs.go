@@ -2306,6 +2306,147 @@ const docTemplate = `{
                 }
             }
         },
+        "/users/me/avatar": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Users"
+                ],
+                "summary": "Remove my profile picture",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.User"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Users"
+                ],
+                "summary": "Set my profile picture from an uploaded image",
+                "parameters": [
+                    {
+                        "description": "Uploaded image ID",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/user.UpdateAvatarInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.User"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/users/me/avatar-upload-url": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Users"
+                ],
+                "summary": "Get a presigned URL to upload a new profile picture",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/users/me/password": {
             "patch": {
                 "security": [
@@ -2757,6 +2898,9 @@ const docTemplate = `{
         "models.BareUserDTO": {
             "type": "object",
             "properties": {
+                "avatarUrl": {
+                    "type": "string"
+                },
                 "id": {
                     "type": "string"
                 },
@@ -3057,6 +3201,10 @@ const docTemplate = `{
         "models.User": {
             "type": "object",
             "properties": {
+                "avatarUrl": {
+                    "description": "AvatarURL is the public URL of the user's square profile picture. Empty\nmeans the app should fall back to the user's initial.",
+                    "type": "string"
+                },
                 "createdAt": {
                     "type": "string"
                 },
@@ -3126,6 +3274,9 @@ const docTemplate = `{
                 "redeemedAt": {
                     "type": "string"
                 },
+                "redeemerAvatarUrl": {
+                    "type": "string"
+                },
                 "redeemerId": {
                     "type": "string"
                 },
@@ -3150,6 +3301,9 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "fulfilledAt": {
+                    "type": "string"
+                },
+                "giverAvatarUrl": {
                     "type": "string"
                 },
                 "giverId": {
@@ -3257,6 +3411,9 @@ const docTemplate = `{
                 "balance": {
                     "type": "integer"
                 },
+                "giverAvatarUrl": {
+                    "type": "string"
+                },
                 "giverId": {
                     "type": "string"
                 },
@@ -3274,6 +3431,9 @@ const docTemplate = `{
                 "balance": {
                     "type": "integer"
                 },
+                "ownerAvatarUrl": {
+                    "type": "string"
+                },
                 "ownerId": {
                     "type": "string"
                 },
@@ -3290,6 +3450,9 @@ const docTemplate = `{
             "properties": {
                 "amount": {
                     "type": "integer"
+                },
+                "counterpartyAvatarUrl": {
+                    "type": "string"
                 },
                 "counterpartyUsername": {
                     "type": "string"
@@ -3380,6 +3543,14 @@ const docTemplate = `{
                 }
             }
         },
+        "user.UpdateAvatarInput": {
+            "type": "object",
+            "properties": {
+                "imageId": {
+                    "type": "string"
+                }
+            }
+        },
         "user.UpdateProfileInput": {
             "type": "object",
             "required": [
@@ -3409,6 +3580,9 @@ const docTemplate = `{
         "user.UserSearchDTO": {
             "type": "object",
             "properties": {
+                "avatarUrl": {
+                    "type": "string"
+                },
                 "id": {
                     "type": "string"
                 },
