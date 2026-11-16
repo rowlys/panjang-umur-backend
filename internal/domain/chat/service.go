@@ -2,9 +2,10 @@ package chat
 
 import (
 	"context"
-	"time"
 	"net/http"
 	"strings"
+	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/rowlys/panjang-umur-backend/internal/httputil"
@@ -14,6 +15,9 @@ import (
 type FriendService interface {
 	IsFriend(user1ID, user2ID uuid.UUID) (bool, error)
 }
+
+// maxMessageLength is a sanity bound on a single chat message, in characters.
+const maxMessageLength = 4000
 
 type Pusher interface {
 	PushMessage(userID uuid.UUID, message *models.Message)
@@ -53,6 +57,9 @@ func (s *service) SendMessage(ctx context.Context, senderID, recipientID uuid.UU
 	body = strings.TrimSpace(body)
 	if body == "" {
 		return nil, &httputil.ServiceError{Code: http.StatusBadRequest, Message: "message body cannot be empty"}
+	}
+	if utf8.RuneCountInString(body) > maxMessageLength {
+		return nil, &httputil.ServiceError{Code: http.StatusBadRequest, Message: "message body is too long"}
 	}
 
 	message := &models.Message{

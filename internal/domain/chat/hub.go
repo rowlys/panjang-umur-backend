@@ -14,6 +14,8 @@ const (
 	writeWait  = 10 * time.Second
 	pongWait   = 60 * time.Second
 	pingPeriod = (pongWait * 9) / 10
+	// readLimit keeps a client from pushing arbitrarily large frames into memory.
+	readLimit = 64 << 10
 )
 
 type connection struct {
@@ -22,6 +24,7 @@ type connection struct {
 }
 
 func newConnection(conn *websocket.Conn) *connection {
+	conn.SetReadLimit(readLimit)
 	conn.SetReadDeadline(time.Now().Add(pongWait))
 	conn.SetPongHandler(func(string) error {
 		return conn.SetReadDeadline(time.Now().Add(pongWait))
