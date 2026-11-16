@@ -598,6 +598,76 @@ const docTemplate = `{
                         }
                     }
                 }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Challenges"
+                ],
+                "summary": "Edit an active challenge I created",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Challenge ID (UUID)",
+                        "name": "challengeId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Fields to change",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/challenge.UpdateChallengeRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.Challenge"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
             }
         },
         "/challenges/{challengeId}/cancel": {
@@ -1828,14 +1898,15 @@ const docTemplate = `{
                         }
                     }
                 }
-            }
-        },
-        "/rewards/{rewardId}/redeem": {
+            },
             "patch": {
                 "security": [
                     {
                         "BearerAuth": []
                     }
+                ],
+                "consumes": [
+                    "application/json"
                 ],
                 "produces": [
                     "application/json"
@@ -1843,7 +1914,7 @@ const docTemplate = `{
                 "tags": [
                     "Rewards"
                 ],
-                "summary": "Redeem a reward using points",
+                "summary": "Edit a reward I own (title, description, cost, stock, visibility)",
                 "parameters": [
                     {
                         "type": "string",
@@ -1851,13 +1922,22 @@ const docTemplate = `{
                         "name": "rewardId",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "description": "Fields to change",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/reward.UpdateRewardRequest"
+                        }
                     }
                 ],
                 "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/models.Reward"
+                            "$ref": "#/definitions/reward.RewardResponse"
                         }
                     },
                     "400": {
@@ -1890,15 +1970,12 @@ const docTemplate = `{
                 }
             }
         },
-        "/rewards/{rewardId}/stock": {
+        "/rewards/{rewardId}/redeem": {
             "patch": {
                 "security": [
                     {
                         "BearerAuth": []
                     }
-                ],
-                "consumes": [
-                    "application/json"
                 ],
                 "produces": [
                     "application/json"
@@ -1906,7 +1983,7 @@ const docTemplate = `{
                 "tags": [
                     "Rewards"
                 ],
-                "summary": "Update a reward's stock (also flips availability accordingly)",
+                "summary": "Redeem a reward using points",
                 "parameters": [
                     {
                         "type": "string",
@@ -1914,15 +1991,6 @@ const docTemplate = `{
                         "name": "rewardId",
                         "in": "path",
                         "required": true
-                    },
-                    {
-                        "description": "New stock amount",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/reward.UpdateRewardStockRequest"
-                        }
                     }
                 ],
                 "responses": {
@@ -2669,6 +2737,23 @@ const docTemplate = `{
                 }
             }
         },
+        "challenge.UpdateChallengeRequest": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "expiresAt": {
+                    "type": "string"
+                },
+                "points": {
+                    "type": "integer"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
         "models.BareUserDTO": {
             "type": "object",
             "properties": {
@@ -2748,11 +2833,18 @@ const docTemplate = `{
                 "challengeId": {
                     "type": "string"
                 },
+                "challengeTitle": {
+                    "description": "ChallengeTitle and Points are snapshots taken when the submission is made.\nEditing the challenge later must not change what this submission is worth.",
+                    "type": "string"
+                },
                 "id": {
                     "type": "string"
                 },
                 "periodStart": {
                     "type": "string"
+                },
+                "points": {
+                    "type": "integer"
                 },
                 "proofImageId": {
                     "type": "string"
@@ -2931,6 +3023,10 @@ const docTemplate = `{
                 "rewardId": {
                     "type": "string"
                 },
+                "rewardTitle": {
+                    "description": "RewardTitle is the reward's title at the moment it was redeemed. It is a\nsnapshot: editing the reward later must not rewrite what was bought.",
+                    "type": "string"
+                },
                 "status": {
                     "$ref": "#/definitions/models.ClaimStatus"
                 }
@@ -3088,12 +3184,70 @@ const docTemplate = `{
                 }
             }
         },
-        "reward.UpdateRewardStockRequest": {
+        "reward.RewardResponse": {
             "type": "object",
             "properties": {
+                "allowedUserIds": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "cost": {
+                    "type": "integer"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "isAvailable": {
+                    "type": "boolean"
+                },
+                "rewardGiverId": {
+                    "type": "string"
+                },
                 "stock": {
-                    "type": "integer",
-                    "minimum": 0
+                    "type": "integer"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "updatedAt": {
+                    "type": "string"
+                },
+                "visibility": {
+                    "$ref": "#/definitions/models.RewardVisibilityMode"
+                }
+            }
+        },
+        "reward.UpdateRewardRequest": {
+            "type": "object",
+            "properties": {
+                "allowedUserIds": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "cost": {
+                    "type": "integer"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "stock": {
+                    "type": "integer"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "visibility": {
+                    "$ref": "#/definitions/models.RewardVisibilityMode"
                 }
             }
         },

@@ -146,6 +146,17 @@ definitions:
       proofImageId:
         type: string
     type: object
+  challenge.UpdateChallengeRequest:
+    properties:
+      description:
+        type: string
+      expiresAt:
+        type: string
+      points:
+        type: integer
+      title:
+        type: string
+    type: object
   models.BareUserDTO:
     properties:
       id:
@@ -200,10 +211,17 @@ definitions:
         type: string
       challengeId:
         type: string
+      challengeTitle:
+        description: |-
+          ChallengeTitle and Points are snapshots taken when the submission is made.
+          Editing the challenge later must not change what this submission is worth.
+        type: string
       id:
         type: string
       periodStart:
         type: string
+      points:
+        type: integer
       proofImageId:
         type: string
       status:
@@ -326,6 +344,11 @@ definitions:
         type: string
       rewardId:
         type: string
+      rewardTitle:
+        description: |-
+          RewardTitle is the reward's title at the moment it was redeemed. It is a
+          snapshot: editing the reward later must not rewrite what was bought.
+        type: string
       status:
         $ref: '#/definitions/models.ClaimStatus'
     type: object
@@ -431,11 +454,49 @@ definitions:
       status:
         $ref: '#/definitions/models.ClaimStatus'
     type: object
-  reward.UpdateRewardStockRequest:
+  reward.RewardResponse:
     properties:
-      stock:
-        minimum: 0
+      allowedUserIds:
+        items:
+          type: string
+        type: array
+      cost:
         type: integer
+      createdAt:
+        type: string
+      description:
+        type: string
+      id:
+        type: string
+      isAvailable:
+        type: boolean
+      rewardGiverId:
+        type: string
+      stock:
+        type: integer
+      title:
+        type: string
+      updatedAt:
+        type: string
+      visibility:
+        $ref: '#/definitions/models.RewardVisibilityMode'
+    type: object
+  reward.UpdateRewardRequest:
+    properties:
+      allowedUserIds:
+        items:
+          type: string
+        type: array
+      cost:
+        type: integer
+      description:
+        type: string
+      stock:
+        type: integer
+      title:
+        type: string
+      visibility:
+        $ref: '#/definitions/models.RewardVisibilityMode'
     type: object
   transaction.BalanceResponse:
     properties:
@@ -725,6 +786,51 @@ paths:
       security:
       - BearerAuth: []
       summary: Delete a challenge (its submissions are hidden, earned points are kept)
+      tags:
+      - Challenges
+    patch:
+      consumes:
+      - application/json
+      parameters:
+      - description: Challenge ID (UUID)
+        in: path
+        name: challengeId
+        required: true
+        type: string
+      - description: Fields to change
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/challenge.UpdateChallengeRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Challenge'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Edit an active challenge I created
       tags:
       - Challenges
   /challenges/{challengeId}/cancel:
@@ -1401,6 +1507,51 @@ paths:
       summary: Get a reward I own by ID
       tags:
       - Rewards
+    patch:
+      consumes:
+      - application/json
+      parameters:
+      - description: Reward ID (UUID)
+        in: path
+        name: rewardId
+        required: true
+        type: string
+      - description: Fields to change
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/reward.UpdateRewardRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/reward.RewardResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Edit a reward I own (title, description, cost, stock, visibility)
+      tags:
+      - Rewards
   /rewards/{rewardId}/redeem:
     patch:
       parameters:
@@ -1437,52 +1588,6 @@ paths:
       security:
       - BearerAuth: []
       summary: Redeem a reward using points
-      tags:
-      - Rewards
-  /rewards/{rewardId}/stock:
-    patch:
-      consumes:
-      - application/json
-      parameters:
-      - description: Reward ID (UUID)
-        in: path
-        name: rewardId
-        required: true
-        type: string
-      - description: New stock amount
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/reward.UpdateRewardStockRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/models.Reward'
-        "400":
-          description: Bad Request
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "403":
-          description: Forbidden
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "404":
-          description: Not Found
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      security:
-      - BearerAuth: []
-      summary: Update a reward's stock (also flips availability accordingly)
       tags:
       - Rewards
   /rewards/claims/{claimId}/fulfill:
