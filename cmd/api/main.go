@@ -53,7 +53,7 @@ func main() {
 
 	// Internal repositories and services 
 	userRepo := user.NewRepository(database.DB)
-	userService := user.NewService(userRepo)
+	userService := user.NewService(userRepo, imageStorageService)
 
 	transactionRepo := transaction.NewRepository(database.DB)
 	transactionService := transaction.NewService(transactionRepo)

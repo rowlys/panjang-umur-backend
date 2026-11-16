@@ -48,7 +48,7 @@ func (r *repository) FindByUsername(username string) (*models.User, error) {
 func (r *repository) FindByIDs(ids []uuid.UUID) ([]*models.BareUserDTO, error) {
 	var users []*models.BareUserDTO
 	err := r.db.Model(&models.User{}).
-		Select("id, username, name").
+		Select("id, username, name, avatar_url").
 		Where("id IN ?", ids).
 		Find(&users).Error
 	return users, err
@@ -59,7 +59,7 @@ func (r *repository) SearchByUsername(callerId uuid.UUID, prefix string, limit i
 	searchTerm := prefix + "%"
 
 	err := r.db.Model(&models.User{}).
-		Select("id, username, name").
+		Select("id, username, name, avatar_url").
 		Where("username ILIKE ?", searchTerm).
 		Limit(limit).
 		Find(&results).Error

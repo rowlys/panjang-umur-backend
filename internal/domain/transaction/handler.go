@@ -50,6 +50,7 @@ type BalanceResponse struct {
 	GiverID       uuid.UUID `json:"giverId"`
 	GiverUsername string    `json:"giverUsername"`
 	GiverName     string    `json:"giverName"`
+	GiverAvatarURL string   `json:"giverAvatarUrl"`
 	Balance       int       `json:"balance"`
 }
 
@@ -92,15 +93,16 @@ func (h *Handler) GetBalances(c *gin.Context) {
 
 	response := make([]BalanceResponse, len(balances))
 	for i, b := range balances {
-		username, name := "Unknown", "Unknown"
+		username, name, avatarURL := "Unknown", "Unknown", ""
 		if giver, exists := giverMap[b.GiverID]; exists {
-			username, name = giver.Username, giver.Name
+			username, name, avatarURL = giver.Username, giver.Name, giver.AvatarURL
 		}
 		response[i] = BalanceResponse{
-			GiverID:       b.GiverID,
-			GiverUsername: username,
-			GiverName:     name,
-			Balance:       b.Balance,
+			GiverID:        b.GiverID,
+			GiverUsername:  username,
+			GiverName:      name,
+			GiverAvatarURL: avatarURL,
+			Balance:        b.Balance,
 		}
 	}
 
@@ -111,6 +113,7 @@ type GivenBalanceResponse struct {
 	OwnerID       uuid.UUID `json:"ownerId"`
 	OwnerUsername string    `json:"ownerUsername"`
 	OwnerName     string    `json:"ownerName"`
+	OwnerAvatarURL string   `json:"ownerAvatarUrl"`
 	Balance       int       `json:"balance"`
 }
 
@@ -153,15 +156,16 @@ func (h *Handler) GetGivenBalances(c *gin.Context) {
 
 	response := make([]GivenBalanceResponse, len(balances))
 	for i, b := range balances {
-		username, name := "Unknown", "Unknown"
+		username, name, avatarURL := "Unknown", "Unknown", ""
 		if owner, exists := ownerMap[b.OwnerID]; exists {
-			username, name = owner.Username, owner.Name
+			username, name, avatarURL = owner.Username, owner.Name, owner.AvatarURL
 		}
 		response[i] = GivenBalanceResponse{
-			OwnerID:       b.OwnerID,
-			OwnerUsername: username,
-			OwnerName:     name,
-			Balance:       b.Balance,
+			OwnerID:        b.OwnerID,
+			OwnerUsername:  username,
+			OwnerName:      name,
+			OwnerAvatarURL: avatarURL,
+			Balance:        b.Balance,
 		}
 	}
 
@@ -208,6 +212,7 @@ type TransactionResponse struct {
 	ReferenceID           uuid.UUID `json:"referenceId"`
 	Title                 string    `json:"title"`
 	CounterpartyUsername  string    `json:"counterpartyUsername"`
+	CounterpartyAvatarURL string    `json:"counterpartyAvatarUrl"`
 	Timestamp             time.Time `json:"timestamp"`
 }
 
@@ -373,8 +378,10 @@ func (h *Handler) GetHistory(c *gin.Context) {
 		return
 	}
 	usernameMap := make(map[uuid.UUID]string, len(users))
+	avatarMap := make(map[uuid.UUID]string, len(users))
 	for _, u := range users {
 		usernameMap[u.ID] = u.Username
+		avatarMap[u.ID] = u.AvatarURL
 	}
 
 	response := make([]TransactionResponse, len(txs))
@@ -394,6 +401,7 @@ func (h *Handler) GetHistory(c *gin.Context) {
 			ReferenceID:           tx.ReferenceID,
 			Title:                 r.title,
 			CounterpartyUsername:  username,
+			CounterpartyAvatarURL: avatarMap[r.counterpartyID],
 			Timestamp:             tx.Timestamp,
 		}
 	}

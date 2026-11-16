@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -19,6 +20,9 @@ type Service interface {
 	PromoteFile(ctx context.Context, sourceKey, destinationKey string) error
 	DeleteFile(ctx context.Context, key string) error
 	GetPublicURL(key string) string
+	// KeyFromURL returns the object key inside bucketURL, or "" when url does
+	// not point into this bucket.
+	KeyFromURL(url string) string
 }
 
 type service struct {
@@ -116,4 +120,12 @@ func (s *service) DeleteFile(ctx context.Context, key string) error {
 
 func (s *service) GetPublicURL(key string) string {
 	return fmt.Sprintf("%s/%s", s.bucketURL, key)
+}
+
+func (s *service) KeyFromURL(url string) string {
+	prefix := s.bucketURL + "/"
+	if !strings.HasPrefix(url, prefix) {
+		return ""
+	}
+	return strings.TrimPrefix(url, prefix)
 }

@@ -7,9 +7,10 @@ import (
 )
 
 type FriendDTO struct {
-	ID       uuid.UUID `json:"id"`
-	Username string    `json:"username"`
-	Name     string    `json:"name"`
+	ID        uuid.UUID `json:"id"`
+	Username  string    `json:"username"`
+	Name      string    `json:"name"`
+	AvatarURL string    `json:"avatarUrl"`
 }
 
 type FriendshipRequestWithUserInfo struct {
@@ -18,9 +19,10 @@ type FriendshipRequestWithUserInfo struct {
 	CreatedAt   string   
 	RespondedAt string   
 
-	OtherID   uuid.UUID
-	OtherName string   
-	OtherUsername string
+	OtherID        uuid.UUID
+	OtherName      string   
+	OtherUsername  string
+	OtherAvatarURL string
 }
 
 type IncomingRequestWithUserDTO struct {
@@ -103,13 +105,13 @@ func (r *repository) ListFriends(userID uuid.UUID) ([]FriendDTO, error) {
 	users := []FriendDTO{}
 
     q1 := r.db.Model(&models.User{}).
-		Select("users.id, users.username, users.name").
+		Select("users.id, users.username, users.name, users.avatar_url").
         Joins("INNER JOIN friendships ON friendships.addressee_id = users.id").
         Where("friendships.requester_id = ?", userID).
         Where("friendships.status = ?", models.FriendshipAccepted)
 
     q2 := r.db.Model(&models.User{}).
-		Select("users.id, users.username, users.name").
+		Select("users.id, users.username, users.name, users.avatar_url").
         Joins("INNER JOIN friendships ON friendships.requester_id = users.id").
         Where("friendships.addressee_id = ?", userID).
         Where("friendships.status = ?", models.FriendshipAccepted)
@@ -122,7 +124,7 @@ func (r *repository) ListFriends(userID uuid.UUID) ([]FriendDTO, error) {
 func (r *repository) ListIncoming(userID uuid.UUID) ([]IncomingRequestWithUserDTO, error) {
 	var rows []FriendshipRequestWithUserInfo
 	err := r.db.Table("friendships").
-		Select("friendships.id, friendships.status, friendships.created_at, friendships.responded_at, friendships.requester_id as other_id, requester.username as other_username, requester.name as other_name, friendships.addressee_id").
+		Select("friendships.id, friendships.status, friendships.created_at, friendships.responded_at, friendships.requester_id as other_id, requester.username as other_username, requester.name as other_name, requester.avatar_url as other_avatar_url, friendships.addressee_id").
 		Joins("JOIN users as requester ON friendships.requester_id = requester.id").
 		Where("friendships.addressee_id = ? AND friendships.status = ?", userID, models.FriendshipPending).
 		Scan(&rows).Error
@@ -136,9 +138,10 @@ func (r *repository) ListIncoming(userID uuid.UUID) ([]IncomingRequestWithUserDT
 		dto := IncomingRequestWithUserDTO{
 			ID: row.ID,
 			Requester: FriendDTO{
-				ID:       row.OtherID,
-				Username: row.OtherUsername,
-				Name:     row.OtherName,
+				ID:        row.OtherID,
+				Username:  row.OtherUsername,
+				Name:      row.OtherName,
+				AvatarURL: row.OtherAvatarURL,
 			},
 			Status:      row.Status,
 			CreatedAt:   row.CreatedAt,
@@ -152,7 +155,7 @@ func (r *repository) ListIncoming(userID uuid.UUID) ([]IncomingRequestWithUserDT
 func (r *repository) ListOutgoing(userID uuid.UUID) ([]OutgoingRequestWithUserDTO, error) {
 	var rows []FriendshipRequestWithUserInfo
 	err := r.db.Table("friendships").
-		Select("friendships.id, friendships.status, friendships.created_at, friendships.responded_at, friendships.addressee_id as other_id, addressee.username as other_username, addressee.name as other_name, friendships.requester_id").
+		Select("friendships.id, friendships.status, friendships.created_at, friendships.responded_at, friendships.addressee_id as other_id, addressee.username as other_username, addressee.name as other_name, addressee.avatar_url as other_avatar_url, friendships.requester_id").
 		Joins("JOIN users as addressee ON friendships.addressee_id = addressee.id").
 		Where("friendships.requester_id = ? AND friendships.status = ?", userID, models.FriendshipPending).
 		Scan(&rows).Error
@@ -166,9 +169,10 @@ func (r *repository) ListOutgoing(userID uuid.UUID) ([]OutgoingRequestWithUserDT
 		dto := OutgoingRequestWithUserDTO{
 			ID: row.ID,
 			Addressee: FriendDTO{
-				ID:       row.OtherID,
-				Username: row.OtherUsername,
-				Name:     row.OtherName,
+				ID:        row.OtherID,
+				Username:  row.OtherUsername,
+				Name:      row.OtherName,
+				AvatarURL: row.OtherAvatarURL,
 			},
 			Status:      row.Status,
 			CreatedAt:   row.CreatedAt,

@@ -16,6 +16,7 @@ import (
 	"github.com/rowlys/panjang-umur-backend/internal/config"
 	"github.com/rowlys/panjang-umur-backend/internal/httputil"
 	"github.com/rowlys/panjang-umur-backend/internal/models"
+	"github.com/rowlys/panjang-umur-backend/internal/pkg/image_storage"
 )
 
 type LoginResponse struct {
@@ -43,19 +44,27 @@ type Service interface {
 	SearchByUsername(callerId uuid.UUID, prefix string, limit int) ([]models.BareUserDTO, error)
 	UpdateProfile(ctx context.Context, userID uuid.UUID, input UpdateProfileInput) (*models.User, error)
 	ChangePassword(ctx context.Context, userID uuid.UUID, input ChangePasswordInput) error
+	// GenerateAvatarUploadURL returns a one-time URL for uploading a new
+	// profile picture, plus the image ID to confirm it with.
+	GenerateAvatarUploadURL(ctx context.Context, userID uuid.UUID) (string, uuid.UUID, error)
+	// UpdateAvatar promotes an uploaded image to the user's profile picture and
+	// removes the previous one.
+	UpdateAvatar(ctx context.Context, userID uuid.UUID, imageID uuid.UUID) (*models.User, error)
+	RemoveAvatar(ctx context.Context, userID uuid.UUID) (*models.User, error)
 }
 
 type service struct {
-	repo Repository
-	jwtSecret string
+	repo         Repository
+	jwtSecret    string
+	imageStorage image_storage.Service
 }
 
-func NewService(repo Repository) Service {
+func NewService(repo Repository, imageStorage image_storage.Service) Service {
 	secret := config.GetEnv("JWT_SECRET", "")
 	if secret == "" {
 		log.Fatal("JWT_SECRET environment variable must be set")
 	}
-	return &service{repo: repo, jwtSecret: secret}
+	return &service{repo: repo, jwtSecret: secret, imageStorage: imageStorage}
 }
 
 func (s *service) Register(ctx context.Context, input RegisterInput) (*models.User, error) {

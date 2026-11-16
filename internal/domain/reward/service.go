@@ -47,6 +47,7 @@ type RewardClaimRedeemed struct {
 	FulfilledAt *time.Time
 	ResolvedAt  *time.Time
 	GiverUsername string
+	GiverAvatarURL string
 }
 
 type RewardClaimGiven struct {
@@ -61,6 +62,7 @@ type RewardClaimGiven struct {
 	FulfilledAt 	*time.Time
 	ResolvedAt  	*time.Time
 	RedeemerUsername string
+	RedeemerAvatarURL string
 }
 
 type UserService interface {
@@ -422,8 +424,10 @@ func (s *service) enrichClaimsWithRedeemerUsernames(claims []models.RewardClaim)
 	}
 
 	redeemerUsernameMap := make(map[uuid.UUID]string)
+	redeemerAvatarMap := make(map[uuid.UUID]string)
 	for _, user := range users {
 		redeemerUsernameMap[user.ID] = user.Username
+		redeemerAvatarMap[user.ID] = user.AvatarURL
 	}
 
 	given := make([]RewardClaimGiven, len(claims))
@@ -445,6 +449,7 @@ func (s *service) enrichClaimsWithRedeemerUsernames(claims []models.RewardClaim)
 			FulfilledAt:      claim.FulfilledAt,
 			ResolvedAt:       claim.ResolvedAt,
 			RedeemerUsername: redeemerUsername,
+			RedeemerAvatarURL: redeemerAvatarMap[claim.RedeemerID],
 		}
 	}
 
@@ -593,8 +598,10 @@ func (s *service) GetClaimsRedeemed(redeemerID uuid.UUID, giverID *uuid.UUID, be
 	}
 
 	giverUsernameMap := make(map[uuid.UUID]string)
+	giverAvatarMap := make(map[uuid.UUID]string)
 	for _, user := range users {
 		giverUsernameMap[user.ID] = user.Username
+		giverAvatarMap[user.ID] = user.AvatarURL
 	}
 
 	history := make([]RewardClaimRedeemed, len(claims))
@@ -616,6 +623,7 @@ func (s *service) GetClaimsRedeemed(redeemerID uuid.UUID, giverID *uuid.UUID, be
 			FulfilledAt:   claim.FulfilledAt,
 			ResolvedAt:    claim.ResolvedAt,
 			GiverUsername: giverUsername,
+			GiverAvatarURL: giverAvatarMap[claim.GiverID],
 		}
 	}
 

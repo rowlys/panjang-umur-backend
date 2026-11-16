@@ -23,10 +23,11 @@ type LoginInput struct {
 }
 
 type UserSearchDTO struct {
-	ID       uuid.UUID `json:"id"`
-	Username string    `json:"username"`
-	Name     string    `json:"name"`
-	Status   int       `json:"status"` // Friendship status with the caller
+	ID        uuid.UUID `json:"id"`
+	Username  string    `json:"username"`
+	Name      string    `json:"name"`
+	AvatarURL string    `json:"avatarUrl"`
+	Status    int       `json:"status"` // Friendship status with the caller
 }
 
 type FriendshipService interface {
@@ -52,6 +53,9 @@ func (h *Handler) RegisterProtectedRoutes(rg *gin.RouterGroup) {
 	rg.GET("/me", h.GetMe)
 	rg.PATCH("/me", h.UpdateProfile)
 	rg.PATCH("/me/password", h.ChangePassword)
+	rg.GET("/me/avatar-upload-url", h.GenerateAvatarUploadURL)
+	rg.PATCH("/me/avatar", h.UpdateAvatar)
+	rg.DELETE("/me/avatar", h.RemoveAvatar)
 	rg.GET("/username/:username", h.GetByUsername)
 	rg.GET("/:userId", h.GetByID)
 
@@ -228,6 +232,96 @@ func (h *Handler) ChangePassword(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Password updated successfully"})
 }
 
+type UpdateAvatarInput struct {
+	ImageID uuid.UUID `json:"imageId"`
+}
+
+// GenerateAvatarUploadURL godoc
+// @Summary      Get a presigned URL to upload a new profile picture
+// @Tags         Users
+// @Produce      json
+// @Security     BearerAuth
+// @Success      200  {object}  map[string]string
+// @Failure      500  {object}  map[string]string
+// @Router       /users/me/avatar-upload-url [get]
+func (h *Handler) GenerateAvatarUploadURL(c *gin.Context) {
+	userID, ok := httputil.ParseUserID(c)
+	if !ok {
+		return
+	}
+
+	uploadURL, imageID, err := h.service.GenerateAvatarUploadURL(c.Request.Context(), userID)
+	if err != nil {
+		code, msg := httputil.ResolveServiceError(err)
+		c.JSON(code, gin.H{"error": msg})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"uploadURL": uploadURL,
+		"imageID":   imageID,
+	})
+}
+
+// UpdateAvatar godoc
+// @Summary      Set my profile picture from an uploaded image
+// @Tags         Users
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        body body UpdateAvatarInput true "Uploaded image ID"
+// @Success      200  {object}  models.User
+// @Failure      400  {object}  map[string]string
+// @Failure      404  {object}  map[string]string
+// @Failure      500  {object}  map[string]string
+// @Router       /users/me/avatar [patch]
+func (h *Handler) UpdateAvatar(c *gin.Context) {
+	userID, ok := httputil.ParseUserID(c)
+	if !ok {
+		return
+	}
+
+	var input UpdateAvatarInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	user, err := h.service.UpdateAvatar(c.Request.Context(), userID, input.ImageID)
+	if err != nil {
+		code, msg := httputil.ResolveServiceError(err)
+		c.JSON(code, gin.H{"error": msg})
+		return
+	}
+
+	c.JSON(http.StatusOK, user)
+}
+
+// RemoveAvatar godoc
+// @Summary      Remove my profile picture
+// @Tags         Users
+// @Produce      json
+// @Security     BearerAuth
+// @Success      200  {object}  models.User
+// @Failure      404  {object}  map[string]string
+// @Failure      500  {object}  map[string]string
+// @Router       /users/me/avatar [delete]
+func (h *Handler) RemoveAvatar(c *gin.Context) {
+	userID, ok := httputil.ParseUserID(c)
+	if !ok {
+		return
+	}
+
+	user, err := h.service.RemoveAvatar(c.Request.Context(), userID)
+	if err != nil {
+		code, msg := httputil.ResolveServiceError(err)
+		c.JSON(code, gin.H{"error": msg})
+		return
+	}
+
+	c.JSON(http.StatusOK, user)
+}
+
 // GetByUsername godoc
 // @Summary      Get user by username
 // @Tags         Users
@@ -319,10 +413,11 @@ func (h *Handler) SearchByUsername(c *gin.Context) {
 		}
 
 		response = append(response, UserSearchDTO{
-			ID:       user.ID,
-			Username: user.Username,
-			Name:     user.Name,
-			Status:   status,
+			ID:        user.ID,
+			Username:  user.Username,
+			Name:      user.Name,
+			AvatarURL: user.AvatarURL,
+			Status:    status,
 		})
 	}
 

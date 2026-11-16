@@ -27,6 +27,7 @@ type RewardClaimRedeemedResponse struct {
 	FulfilledAt   *time.Time         `json:"fulfilledAt"`
 	ResolvedAt    *time.Time         `json:"resolvedAt"`
 	GiverUsername string             `json:"giverUsername"`
+	GiverAvatarURL string            `json:"giverAvatarUrl"`
 }
 
 type RewardClaimGivenResponse struct {
@@ -41,6 +42,7 @@ type RewardClaimGivenResponse struct {
 	FulfilledAt   	 *time.Time         `json:"fulfilledAt"`
 	ResolvedAt    	 *time.Time         `json:"resolvedAt"`
 	RedeemerUsername string             `json:"redeemerUsername"`
+	RedeemerAvatarURL string            `json:"redeemerAvatarUrl"`
 }
 
 type CreateRewardRequest struct {
@@ -446,6 +448,7 @@ func (h *Handler) GetClaimsGiven(c *gin.Context) {
 			FulfilledAt:      claim.FulfilledAt,
 			ResolvedAt:       claim.ResolvedAt,
 			RedeemerUsername: claim.RedeemerUsername,
+			RedeemerAvatarURL: claim.RedeemerAvatarURL,
 		}
 	}
 
@@ -501,6 +504,7 @@ func (h *Handler) GetClaimsRedeemed(c *gin.Context) {
 			FulfilledAt:   claim.FulfilledAt,
 			ResolvedAt:    claim.ResolvedAt,
 			GiverUsername: claim.GiverUsername,
+			GiverAvatarURL: claim.GiverAvatarURL,
 		}
 	}
 
