@@ -52,8 +52,22 @@ type CreateRewardRequest struct {
 	AllowedUserIDs []uuid.UUID                 `json:"allowedUserIds"`
 }
 
-type UpdateRewardStockRequest struct {
-	Stock int `json:"stock" binding:"gte=0"`
+// UpdateRewardRequest only carries fields the owner sent. Numbers are validated
+// in the service so a pointer to zero is distinguishable from an absent field.
+type UpdateRewardRequest struct {
+	Title          *string                      `json:"title"`
+	Description    *string                      `json:"description"`
+	Cost           *int                         `json:"cost"`
+	Stock          *int                         `json:"stock"`
+	Visibility     *models.RewardVisibilityMode `json:"visibility"`
+	AllowedUserIDs []uuid.UUID                  `json:"allowedUserIds"`
+}
+
+// RewardResponse is what an owner sees of their own reward. AllowedUserIDs is
+// only included for restricted rewards and never leaks to friends browsing it.
+type RewardResponse struct {
+	models.Reward
+	AllowedUserIDs []uuid.UUID `json:"allowedUserIds,omitempty"`
 }
 
 func NewHandler(service Service) *Handler {
@@ -72,7 +86,7 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 	rg.PATCH("/claims/:claimId/refund/approve", h.ApproveRefund)
 
 	rg.PATCH("/:rewardId/redeem", h.Redeem)
-	rg.PATCH("/:rewardId/stock", h.UpdateStock)
+	rg.PATCH("/:rewardId", h.Update)
 	rg.GET("/:rewardId", h.GetByID)
 }
 
@@ -115,7 +129,36 @@ func (h *Handler) Create(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusCreated, reward)
+	response, err := h.rewardResponses([]models.Reward{*reward})
+	if err != nil {
+		code, msg := httputil.ResolveServiceError(err)
+		c.JSON(code, gin.H{"error": msg})
+		return
+	}
+
+	c.JSON(http.StatusCreated, response[0])
+}
+
+// rewardResponses decorates owner-facing rewards with their restricted
+// recipient list. Friends browsing a shop never see this.
+func (h *Handler) rewardResponses(rewards []models.Reward) ([]RewardResponse, error) {
+	var restrictedIDs []uuid.UUID
+	for _, reward := range rewards {
+		if reward.Visibility == models.Restricted {
+			restrictedIDs = append(restrictedIDs, reward.ID)
+		}
+	}
+
+	visibility, err := h.service.GetAllowedUserIDs(restrictedIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	response := make([]RewardResponse, len(rewards))
+	for i, reward := range rewards {
+		response[i] = RewardResponse{Reward: reward, AllowedUserIDs: visibility[reward.ID]}
+	}
+	return response, nil
 }
 
 // Redeem godoc
@@ -213,7 +256,14 @@ func (h *Handler) GetMyShop(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, rewards)
+	response, err := h.rewardResponses(rewards)
+	if err != nil {
+		code, msg := httputil.ResolveServiceError(err)
+		c.JSON(code, gin.H{"error": msg})
+		return
+	}
+
+	c.JSON(http.StatusOK, response)
 }
 
 // GetByID godoc
@@ -246,23 +296,30 @@ func (h *Handler) GetByID(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, reward)
+	response, err := h.rewardResponses([]models.Reward{*reward})
+	if err != nil {
+		code, msg := httputil.ResolveServiceError(err)
+		c.JSON(code, gin.H{"error": msg})
+		return
+	}
+
+	c.JSON(http.StatusOK, response[0])
 }
 
-// UpdateStock godoc
-// @Summary      Update a reward's stock (also flips availability accordingly)
+// Update godoc
+// @Summary      Edit a reward I own (title, description, cost, stock, visibility)
 // @Tags         Rewards
 // @Accept       json
 // @Produce      json
 // @Security     BearerAuth
-// @Param        rewardId  path      string                     true  "Reward ID (UUID)"
-// @Param        body      body      UpdateRewardStockRequest   true  "New stock amount"
-// @Success      200       {object}  models.Reward
+// @Param        rewardId  path      string              true  "Reward ID (UUID)"
+// @Param        body      body      UpdateRewardRequest true  "Fields to change"
+// @Success      200       {object}  RewardResponse
 // @Failure      400       {object}  map[string]string
 // @Failure      403       {object}  map[string]string
 // @Failure      404       {object}  map[string]string
-// @Router       /rewards/{rewardId}/stock [patch]
-func (h *Handler) UpdateStock(c *gin.Context) {
+// @Router       /rewards/{rewardId} [patch]
+func (h *Handler) Update(c *gin.Context) {
 	rewardID, err := uuid.Parse(c.Param("rewardId"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid reward ID"})
@@ -274,20 +331,34 @@ func (h *Handler) UpdateStock(c *gin.Context) {
 		return
 	}
 
-	var input UpdateRewardStockRequest
+	var input UpdateRewardRequest
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	reward, err := h.service.UpdateStock(c.Request.Context(), rewardID, userID, input.Stock)
+	reward, err := h.service.Update(c.Request.Context(), rewardID, userID, UpdateRewardInput{
+		Title:          input.Title,
+		Description:    input.Description,
+		Cost:           input.Cost,
+		Stock:          input.Stock,
+		Visibility:     input.Visibility,
+		AllowedUserIDs: input.AllowedUserIDs,
+	})
 	if err != nil {
 		code, msg := httputil.ResolveServiceError(err)
 		c.JSON(code, gin.H{"error": msg})
 		return
 	}
 
-	c.JSON(http.StatusOK, reward)
+	response, err := h.rewardResponses([]models.Reward{*reward})
+	if err != nil {
+		code, msg := httputil.ResolveServiceError(err)
+		c.JSON(code, gin.H{"error": msg})
+		return
+	}
+
+	c.JSON(http.StatusOK, response[0])
 }
 
 func parseClaimsPageParams(c *gin.Context) (before *time.Time, limit int, ok bool) {
