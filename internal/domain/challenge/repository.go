@@ -40,6 +40,12 @@ type Repository interface {
 	FindSubmissionsByUserAndChallenges(userID uuid.UUID, challengeIDs []uuid.UUID) ([]models.ChallengeSubmission, error)
 	FindSubmissionsByIDs(ids []uuid.UUID) ([]models.ChallengeSubmission, error)
 	CountAssigneesWithoutApprovedSubmission(tx *gorm.DB, challengeID uuid.UUID) (int64, error)
+
+	// FindProofImagesToPurge returns approved submissions that still hold a
+	// stored proof image and were approved before cutoff, oldest first.
+	FindProofImagesToPurge(cutoff time.Time, limit int) ([]models.ChallengeSubmission, error)
+	// ClearProofImage forgets a submission's image once its file is gone.
+	ClearProofImage(id uuid.UUID, imageID uuid.UUID) error
 }
 
 type repository struct {
@@ -174,6 +180,30 @@ func (r *repository) ApproveSubmissionTx(tx *gorm.DB, id uuid.UUID, at time.Time
 			"approved_at": at,
 		})
 	return result.RowsAffected > 0, result.Error
+}
+
+// FindProofImagesToPurge returns approved submissions that still hold a stored
+// proof image and were approved before cutoff, oldest first. Rows whose image
+// was already cleared are skipped by the IS NOT NULL filter. Legacy approvals
+// without approved_at fall back to submitted_at.
+func (r *repository) FindProofImagesToPurge(cutoff time.Time, limit int) ([]models.ChallengeSubmission, error) {
+	var submissions []models.ChallengeSubmission
+	err := r.db.
+		Select("id", "proof_image_id", "approved_at").
+		Where("status = ? AND proof_image_id IS NOT NULL AND COALESCE(approved_at, submitted_at) < ?",
+			models.SubmissionApproved, cutoff).
+		Order("COALESCE(approved_at, submitted_at) ASC").
+		Limit(limit).
+		Find(&submissions).Error
+	return submissions, err
+}
+
+// ClearProofImage forgets a submission's image. The image ID is part of the
+// predicate so a concurrent purge cannot clear a newer reference.
+func (r *repository) ClearProofImage(id uuid.UUID, imageID uuid.UUID) error {
+	return r.db.Model(&models.ChallengeSubmission{}).
+		Where("id = ? AND proof_image_id = ?", id, imageID).
+		Update("proof_image_id", nil).Error
 }
 
 func (r *repository) FindSubmissionForPeriod(challengeID, userID uuid.UUID, periodStart time.Time) (*models.ChallengeSubmission, error) {

@@ -10,6 +10,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"log"
 	"net/http"
@@ -26,8 +27,9 @@ import (
 	"github.com/rowlys/panjang-umur-backend/internal/domain/reward"
 	"github.com/rowlys/panjang-umur-backend/internal/domain/transaction"
 	"github.com/rowlys/panjang-umur-backend/internal/domain/user"
-	"github.com/rowlys/panjang-umur-backend/internal/pkg/image_storage"
+	"github.com/rowlys/panjang-umur-backend/internal/jobs"
 	"github.com/rowlys/panjang-umur-backend/internal/middlewares"
+	"github.com/rowlys/panjang-umur-backend/internal/pkg/image_storage"
 
 	_ "github.com/rowlys/panjang-umur-backend/docs"
 	swaggerFiles "github.com/swaggo/files"
@@ -68,6 +70,10 @@ func main() {
 	chatHub := chat.NewHub()
 	chatRepo := chat.NewRepository(database.DB)
 	chatService := chat.NewService(chatRepo, friendshipService, chatHub)
+
+	// Background maintenance: drop proof images once an approved submission is
+	// more than a month old. The submission and its points stay in the ledger.
+	go jobs.RunProofImageCleanup(context.Background(), challengeService)
 
 	// Handlers
 	userHandler := user.NewHandler(userService, friendshipService)

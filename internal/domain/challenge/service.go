@@ -73,6 +73,9 @@ type Service interface {
 
 	GenerateProofUploadURL(ctx context.Context) (string, uuid.UUID, error)
 	GetProofURL(imageID *uuid.UUID) *string
+	// PurgeOldProofImages deletes proof images of submissions approved before
+	// cutoff and clears their stored reference. It is safe to call repeatedly.
+	PurgeOldProofImages(ctx context.Context, cutoff time.Time) (int, error)
 }
 
 type service struct {
