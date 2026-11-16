@@ -28,6 +28,16 @@ type SubmitChallengeRequest struct {
 	ProofImageID *uuid.UUID `json:"proofImageId,omitempty"`
 }
 
+// UpdateChallengeRequest only carries fields that may change after creation.
+// Type, reset day and assignees are intentionally absent: they decide when
+// periods roll over and who can take part.
+type UpdateChallengeRequest struct {
+	Title       *string    `json:"title"`
+	Description *string    `json:"description"`
+	Points      *int       `json:"points"`
+	ExpiresAt   *time.Time `json:"expiresAt"`
+}
+
 type GetSubmissionsSubmittedResponse struct {
 	ID              uuid.UUID  `json:"id"`
 	ChallengeID     uuid.UUID  `json:"challengeId"`
@@ -125,6 +135,7 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 	rg.GET("/:id", h.GetByID)
 
 	rg.PATCH("/:challengeId/submit", h.Submit)
+	rg.PATCH("/:challengeId", h.Update)
 	rg.PATCH("/:challengeId/cancel", h.Cancel)
 	rg.DELETE("/:challengeId", h.Delete)
 	rg.GET("/submissions/submitted", h.GetSubmissionsSubmitted)
@@ -177,6 +188,52 @@ func (h *Handler) Create(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, challenge)
+}
+
+// Update godoc
+// @Summary      Edit an active challenge I created
+// @Tags         Challenges
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        challengeId  path      string                true  "Challenge ID (UUID)"
+// @Param        body         body      UpdateChallengeRequest true "Fields to change"
+// @Success      200          {object}  models.Challenge
+// @Failure      400          {object}  map[string]string
+// @Failure      403          {object}  map[string]string
+// @Failure      404          {object}  map[string]string
+// @Router       /challenges/{challengeId} [patch]
+func (h *Handler) Update(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("challengeId"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid challenge ID"})
+		return
+	}
+
+	userID, ok := httputil.ParseUserID(c)
+	if !ok {
+		return
+	}
+
+	var input UpdateChallengeRequest
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	challenge, err := h.service.Update(c.Request.Context(), id, userID, UpdateChallengeInput{
+		Title:       input.Title,
+		Description: input.Description,
+		Points:      input.Points,
+		ExpiresAt:   input.ExpiresAt,
+	})
+	if err != nil {
+		code, msg := httputil.ResolveServiceError(err)
+		c.JSON(code, gin.H{"error": msg})
+		return
+	}
+
+	c.JSON(http.StatusOK, challenge)
 }
 
 // Submit godoc
@@ -513,6 +570,23 @@ func (h *Handler) challengeInfoMap(submissions []models.ChallengeSubmission) (ma
 	return challengeMap, nil
 }
 
+// submissionTitle and submissionPoints prefer the snapshot stored on the
+// submission, falling back to the live challenge for rows written before the
+// snapshots existed.
+func submissionTitle(submission models.ChallengeSubmission, challenge models.Challenge) string {
+	if submission.ChallengeTitle != "" {
+		return submission.ChallengeTitle
+	}
+	return challenge.Title
+}
+
+func submissionPoints(submission models.ChallengeSubmission, challenge models.Challenge) int {
+	if submission.Points > 0 {
+		return submission.Points
+	}
+	return challenge.Points
+}
+
 // GetSubmissionsSubmitted godoc
 // @Summary      List challenge submissions I've made, optionally narrowed to one challenge
 // @Tags         Challenges
@@ -564,8 +638,8 @@ func (h *Handler) GetSubmissionsSubmitted(c *gin.Context) {
 		response[i] = GetSubmissionsSubmittedResponse{
 			ID:              submission.ID,
 			ChallengeID:     submission.ChallengeID,
-			ChallengeTitle:  ch.Title,
-			ChallengePoints: ch.Points,
+			ChallengeTitle:  submissionTitle(submission, ch),
+			ChallengePoints: submissionPoints(submission, ch),
 			ChallengeType:   int(ch.Type),
 			ChallengeStatus: int(ch.Status),
 			ProofURL:        h.service.GetProofURL(submission.ProofImageID),
@@ -652,8 +726,8 @@ func (h *Handler) GetSubmissionsReceived(c *gin.Context) {
 		response[i] = GetSubmissionsReceivedResponse{
 			ID:              submission.ID,
 			ChallengeID:     submission.ChallengeID,
-			ChallengeTitle:  ch.Title,
-			ChallengePoints: ch.Points,
+			ChallengeTitle:  submissionTitle(submission, ch),
+			ChallengePoints: submissionPoints(submission, ch),
 			ChallengeType:   int(ch.Type),
 			ChallengeStatus: int(ch.Status),
 			UserID:          submission.UserID,
@@ -746,7 +820,11 @@ func (h *Handler) GetByCreator(c *gin.Context) {
 		return
 	}
 
-	challenges, err := h.service.GetByCreator(userID, []models.ChallengeStatus{models.StatusActive})
+	challenges, err := h.service.GetByCreator(userID, []models.ChallengeStatus{
+		models.StatusActive,
+		models.StatusCompleted,
+		models.StatusCancelled,
+	})
 	if err != nil {
 		code, msg := httputil.ResolveServiceError(err)
 		c.JSON(code, gin.H{"error": msg})

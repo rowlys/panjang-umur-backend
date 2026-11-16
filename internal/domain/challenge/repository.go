@@ -10,7 +10,6 @@ import (
 
 
 type Repository interface {
-	Create(challenge *models.Challenge) error
 	Save(challenge *models.Challenge) error
 	Delete(id uuid.UUID) error
 
@@ -18,23 +17,18 @@ type Repository interface {
 	SaveTx(tx *gorm.DB, challenge *models.Challenge) error
 	Transact(fn func(tx *gorm.DB) error) error
 
-	FindAll(statuses []models.ChallengeStatus) ([]models.Challenge, error)
 	FindVisibleToUser(userID uuid.UUID, statuses []models.ChallengeStatus) ([]models.Challenge, error)
 	FindByID(id uuid.UUID) (*models.Challenge, error)
 	FindByIDs(ids []uuid.UUID) ([]models.Challenge, error)
 	FindByCreator(userID uuid.UUID, statuses []models.ChallengeStatus) ([]models.Challenge, error)
 	FindChallengesInvolvingUser(userID uuid.UUID) ([]models.Challenge, error)
 
-	CreateAssignee(a *models.ChallengeAssignee) error
 	CreateAssigneeTx(tx *gorm.DB, a *models.ChallengeAssignee) error
 	FindAssignee(challengeID, userID uuid.UUID) (*models.ChallengeAssignee, error)
-	FindAssigneesByChallenge(challengeID uuid.UUID) ([]models.ChallengeAssignee, error)
 	FindAssigneesByChallenges(challengeIDs []uuid.UUID) ([]models.ChallengeAssignee, error)
 
 	CreateSubmission(s *models.ChallengeSubmission) error
-	CreateSubmissionTx(tx *gorm.DB, s *models.ChallengeSubmission) error
-	SaveSubmission(s *models.ChallengeSubmission) error
-	SaveSubmissionTx(tx *gorm.DB, s *models.ChallengeSubmission) error
+	ApproveSubmissionTx(tx *gorm.DB, id uuid.UUID, at time.Time) (bool, error)
 	FindSubmissionForPeriod(challengeID, userID uuid.UUID, periodStart time.Time) (*models.ChallengeSubmission, error)
 	FindSubmissionByID(id uuid.UUID) (*models.ChallengeSubmission, error)
 	FindLatestSubmission(challengeID, userID uuid.UUID) (*models.ChallengeSubmission, error)
@@ -56,10 +50,6 @@ func NewRepository(db *gorm.DB) Repository {
 	return &repository{db: db}
 }
 
-func (r *repository) Create(challenge *models.Challenge) error {
-	return r.db.Create(challenge).Error
-}
-
 func (r *repository) Save(challenge *models.Challenge) error {
 	return r.db.Save(challenge).Error
 }
@@ -79,12 +69,6 @@ func (r *repository) SaveTx(tx *gorm.DB, challenge *models.Challenge) error {
 
 func (r *repository) Transact(fn func(tx *gorm.DB) error) error {
 	return r.db.Transaction(fn)
-}
-
-func (r *repository) FindAll(statuses []models.ChallengeStatus) ([]models.Challenge, error) {
-	var challenges []models.Challenge
-	err := r.db.Where("status IN ? AND (expires_at IS NULL OR expires_at > NOW() OR status != ?)", statuses, models.StatusActive).Find(&challenges).Error
-	return challenges, err
 }
 
 func (r *repository) FindVisibleToUser(userID uuid.UUID, statuses []models.ChallengeStatus) ([]models.Challenge, error) {
@@ -156,10 +140,6 @@ func (r *repository) FindChallengesInvolvingUser(userID uuid.UUID) ([]models.Cha
 	return challenges, err
 }
 
-func (r *repository) CreateAssignee(a *models.ChallengeAssignee) error {
-	return r.db.Create(a).Error
-}
-
 func (r *repository) CreateAssigneeTx(tx *gorm.DB, a *models.ChallengeAssignee) error {
 	return tx.Create(a).Error
 }
@@ -168,12 +148,6 @@ func (r *repository) FindAssignee(challengeID, userID uuid.UUID) (*models.Challe
 	var a models.ChallengeAssignee
 	err := r.db.Where("challenge_id = ? AND user_id = ?", challengeID, userID).First(&a).Error
 	return &a, err
-}
-
-func (r *repository) FindAssigneesByChallenge(challengeID uuid.UUID) ([]models.ChallengeAssignee, error) {
-	var assignees []models.ChallengeAssignee
-	err := r.db.Where("challenge_id = ?", challengeID).Find(&assignees).Error
-	return assignees, err
 }
 
 func (r *repository) FindAssigneesByChallenges(challengeIDs []uuid.UUID) ([]models.ChallengeAssignee, error) {
@@ -189,16 +163,17 @@ func (r *repository) CreateSubmission(s *models.ChallengeSubmission) error {
 	return r.db.Create(s).Error
 }
 
-func (r *repository) CreateSubmissionTx(tx *gorm.DB, s *models.ChallengeSubmission) error {
-	return tx.Create(s).Error
-}
-
-func (r *repository) SaveSubmission(s *models.ChallengeSubmission) error {
-	return r.db.Save(s).Error
-}
-
-func (r *repository) SaveSubmissionTx(tx *gorm.DB, s *models.ChallengeSubmission) error {
-	return tx.Save(s).Error
+// ApproveSubmissionTx approves a submission only while it is still pending, so
+// two concurrent approvals cannot both award points. It reports whether this
+// call was the one that moved the row.
+func (r *repository) ApproveSubmissionTx(tx *gorm.DB, id uuid.UUID, at time.Time) (bool, error) {
+	result := tx.Model(&models.ChallengeSubmission{}).
+		Where("id = ? AND status = ?", id, models.SubmissionSubmitted).
+		Updates(map[string]any{
+			"status":      models.SubmissionApproved,
+			"approved_at": at,
+		})
+	return result.RowsAffected > 0, result.Error
 }
 
 func (r *repository) FindSubmissionForPeriod(challengeID, userID uuid.UUID, periodStart time.Time) (*models.ChallengeSubmission, error) {

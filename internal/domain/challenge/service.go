@@ -3,9 +3,10 @@ package challenge
 import (
 	"context"
 	"errors"
-	"net/http"
-	"time"
 	"fmt"
+	"net/http"
+	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/rowlys/panjang-umur-backend/internal/httputil"
@@ -25,6 +26,17 @@ type CreateChallengeInput struct {
 	ExpiresAt   *time.Time  `json:"expiresAt"`
 }
 
+// UpdateChallengeInput carries the fields a creator may change after creation.
+// Type, reset day and assignees stay fixed: changing them would move the
+// period boundaries or the participant list that submissions were judged
+// against.
+type UpdateChallengeInput struct {
+	Title       *string
+	Description *string
+	Points      *int
+	ExpiresAt   *time.Time
+}
+
 type FriendService interface {
 	IsFriend(userA, userB uuid.UUID) (bool, error)
 }
@@ -35,6 +47,7 @@ type TransactionService interface {
 
 type Service interface {
 	Create(ctx context.Context, input CreateChallengeInput) (*models.Challenge, error)
+	Update(ctx context.Context, challengeID uuid.UUID, callerID uuid.UUID, input UpdateChallengeInput) (*models.Challenge, error)
 	Submit(ctx context.Context, challengeID uuid.UUID, userID uuid.UUID, proofImageID *uuid.UUID) (*models.Challenge, error)
 	Approve(ctx context.Context, submissionID uuid.UUID, callerID uuid.UUID) (*models.ChallengeSubmission, error)
 	Cancel(ctx context.Context, challengeID uuid.UUID, callerID uuid.UUID) (*models.Challenge, error)
@@ -73,18 +86,25 @@ func NewService(repo Repository, friendService FriendService, transactionService
 	return &service{repo: repo, friendService: friendService, transactionService: transactionService, imageStorage: imageStorage}
 }
 
+// appZone is the calendar zone challenge periods are cut in. A fixed offset is
+// used instead of a location name because the runtime image has no tz database.
+var appZone = time.FixedZone("WIB", 7*60*60)
+
+// currentPeriodStart returns the start of the period containing at. Boundaries
+// are local midnight in appZone, so a "daily" challenge rolls over for the user
+// at their midnight rather than at 07:00.
 func currentPeriodStart(t models.ChallengeType, at time.Time, resetDay int) time.Time {
-	at = at.UTC()
+	at = at.In(appZone)
 	switch t {
 	case models.Daily:
-		return time.Date(at.Year(), at.Month(), at.Day(), 0, 0, 0, 0, time.UTC)
+		return time.Date(at.Year(), at.Month(), at.Day(), 0, 0, 0, 0, appZone)
 	case models.Weekly:
 		targetDay := resetDay
 
 		daysSince := (int(at.Weekday()) - targetDay + 7) % 7
 
 		d := at.AddDate(0, 0, -daysSince)
-		return time.Date(d.Year(), d.Month(), d.Day(), 0, 0, 0, 0, time.UTC)
+		return time.Date(d.Year(), d.Month(), d.Day(), 0, 0, 0, 0, appZone)
 
 	default:
 		return time.Time{}
@@ -145,6 +165,50 @@ func (s *service) Create(ctx context.Context, input CreateChallengeInput) (*mode
 	return challenge, nil
 }
 
+func (s *service) Update(ctx context.Context, challengeID uuid.UUID, callerID uuid.UUID, input UpdateChallengeInput) (*models.Challenge, error) {
+	challenge, err := s.repo.FindByID(challengeID)
+	if err != nil {
+		return nil, &httputil.ServiceError{Code: http.StatusNotFound, Message: "Challenge not found"}
+	}
+
+	if challenge.CreatorID != callerID {
+		return nil, &httputil.ServiceError{Code: http.StatusForbidden, Message: "Only the challenge creator can edit it"}
+	}
+
+	if challenge.Status != models.StatusActive {
+		return nil, &httputil.ServiceError{Code: http.StatusBadRequest, Message: "Only active challenges can be edited"}
+	}
+
+	if input.Title != nil {
+		title := strings.TrimSpace(*input.Title)
+		if title == "" {
+			return nil, &httputil.ServiceError{Code: http.StatusBadRequest, Message: "Title is required"}
+		}
+		challenge.Title = title
+	}
+
+	if input.Description != nil {
+		challenge.Description = *input.Description
+	}
+
+	if input.Points != nil {
+		if *input.Points <= 0 {
+			return nil, &httputil.ServiceError{Code: http.StatusBadRequest, Message: "Points must be greater than zero"}
+		}
+		challenge.Points = *input.Points
+	}
+
+	if input.ExpiresAt != nil {
+		challenge.ExpiresAt = input.ExpiresAt
+	}
+
+	if err := s.repo.Save(challenge); err != nil {
+		return nil, &httputil.ServiceError{Code: http.StatusInternalServerError, Message: "Failed to update challenge"}
+	}
+
+	return challenge, nil
+}
+
 func (s *service) Submit(ctx context.Context, challengeID uuid.UUID, userID uuid.UUID, proofImageID *uuid.UUID) (*models.Challenge, error) {
 	challenge, err := s.repo.FindByID(challengeID)
 	if err != nil {
@@ -196,13 +260,15 @@ func (s *service) Submit(ctx context.Context, challengeID uuid.UUID, userID uuid
 		}
 
 		submission := &models.ChallengeSubmission{
-			ID:          uuid.New(),
-			ChallengeID: challengeID,
-			UserID:      userID,
-			ProofImageID: proofImageID,	
-			PeriodStart: period,
-			Status:      models.SubmissionSubmitted,
-			SubmittedAt: time.Now(),
+			ID:             uuid.New(),
+			ChallengeID:    challengeID,
+			ChallengeTitle: challenge.Title,
+			Points:         challenge.Points,
+			UserID:         userID,
+			ProofImageID:   proofImageID,
+			PeriodStart:    period,
+			Status:         models.SubmissionSubmitted,
+			SubmittedAt:    time.Now(),
 		}
 		if err := s.repo.CreateSubmission(submission); err != nil {
 			return nil, &httputil.ServiceError{Code: http.StatusInternalServerError, Message: "Failed to submit challenge"}
@@ -241,14 +307,25 @@ func (s *service) Approve(ctx context.Context, submissionID uuid.UUID, callerID 
 	}
 
 	now := time.Now()
-	submission.Status = models.SubmissionApproved
-	submission.ApprovedAt = &now
+	points := submission.Points
+	if points <= 0 {
+		// Rows written before points were snapshotted have no value of their own.
+		points = challenge.Points
+	}
 
+	approved := false
 	if err := s.repo.Transact(func(tx *gorm.DB) error {
-		if err := s.repo.SaveSubmissionTx(tx, submission); err != nil {
+		ok, err := s.repo.ApproveSubmissionTx(tx, submission.ID, now)
+		approved = ok
+		if err != nil {
 			return err
 		}
-		if err := s.transactionService.RecordEarnedTx(tx, submission.UserID, challenge.CreatorID, challenge.Points, submission.ID, models.ReferenceSubmission); err != nil {
+		if !ok {
+			// Someone else approved or moved this submission after we read it.
+			return nil
+		}
+
+		if err := s.transactionService.RecordEarnedTx(tx, submission.UserID, challenge.CreatorID, points, submission.ID, models.ReferenceSubmission); err != nil {
 			return err
 		}
 
@@ -269,6 +346,13 @@ func (s *service) Approve(ctx context.Context, submissionID uuid.UUID, callerID 
 	}); err != nil {
 		return nil, &httputil.ServiceError{Code: http.StatusInternalServerError, Message: "Failed to approve submission"}
 	}
+
+	if !approved {
+		return nil, &httputil.ServiceError{Code: http.StatusBadRequest, Message: "Submission is not pending approval"}
+	}
+
+	submission.Status = models.SubmissionApproved
+	submission.ApprovedAt = &now
 
 	return submission, nil
 }
@@ -452,10 +536,14 @@ func (s *service) GetSubmissionContexts(ids []uuid.UUID) ([]models.SubmissionCon
 	contexts := make([]models.SubmissionContext, len(submissions))
 	for i, submission := range submissions {
 		ch := challengeMap[submission.ChallengeID]
+		title := submission.ChallengeTitle
+		if title == "" {
+			title = ch.Title
+		}
 		contexts[i] = models.SubmissionContext{
 			SubmissionID:   submission.ID,
 			ChallengeID:    submission.ChallengeID,
-			ChallengeTitle: ch.Title,
+			ChallengeTitle: title,
 			SubmitterID:    submission.UserID,
 			CreatorID:      ch.CreatorID,
 		}
