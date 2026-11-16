@@ -96,12 +96,14 @@ func SeedChallenge(creator models.User, title string, points int, challengeType 
 func SeedChallengeSubmission(challenge models.Challenge, assignee models.User, periodStart time.Time, status models.SubmissionStatus) models.ChallengeSubmission {
 	now := time.Now()
 	submission := models.ChallengeSubmission{
-		ID:          uuid.New(),
-		ChallengeID: challenge.ID,
-		UserID:      assignee.ID,
-		PeriodStart: periodStart,
-		Status:      status,
-		SubmittedAt: now,
+		ID:             uuid.New(),
+		ChallengeID:    challenge.ID,
+		ChallengeTitle: challenge.Title,
+		Points:         challenge.Points,
+		UserID:         assignee.ID,
+		PeriodStart:    periodStart,
+		Status:         status,
+		SubmittedAt:    now,
 	}
 	if status == models.SubmissionApproved {
 		submission.ApprovedAt = &now

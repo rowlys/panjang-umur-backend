@@ -50,6 +50,10 @@ func Connect() {
 		log.Fatalf("Failed to migrate database schemas: %v", err)
 	}
 
+	if err := BackfillSnapshots(db); err != nil {
+		log.Fatalf("Failed to backfill snapshot columns: %v", err)
+	}
+
 	if db.Migrator().HasTable("challenge_assignments") {
 		if err := db.Migrator().DropTable("challenge_assignments"); err != nil {
 			log.Fatalf("Failed to drop legacy challenge_assignments table: %v", err)
